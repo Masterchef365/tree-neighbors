@@ -1,13 +1,14 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, fs::read, rc::Rc};
 
 use eframe::egui::{CentralPanel, Color32, Frame, Pos2, Rect, Scene, Sense, Stroke, Ui, Vec2};
 use rand::Rng;
 
 fn main() {
-    let mut tree = random_tree(0.0, None);
+    let mut tree = random_tree(300.0, None);
 
     let mut scene_rect = Rect::ZERO;
     eframe::run_simple_native("tree test", Default::default(), move |ctx, _frame| {
+        ctx.request_repaint();
         CentralPanel::default().show(ctx, |ui| {
             Frame::canvas(ui.style()).show(ui, |ui| {
                 Scene::new().zoom_range(0.0..=100.0).show(ui, &mut scene_rect, |ui| {
@@ -15,6 +16,7 @@ fn main() {
                 });
             });
         });
+        tree = step_tree(tree.clone(), None);
     })
     .unwrap();
 }
@@ -35,7 +37,7 @@ enum NodeContent {
 }
 
 fn random_tree(p: f64, parent: Option<NodeRef>) -> NodeRef {
-    let new_node = Node::from_value(rand::thread_rng().r#gen(), parent);
+    let new_node = Node::from_content(NodeContent::Leaf(rand::thread_rng().r#gen()), parent);
 
     if rand::thread_rng().gen_bool(p.min(1.0)) {
         let content =
@@ -48,15 +50,18 @@ fn random_tree(p: f64, parent: Option<NodeRef>) -> NodeRef {
 
 fn draw_tree(ui: &mut Ui, root: NodeRef) {
     let (rectangle, resp) = ui.allocate_exact_size(Vec2::splat(500.0), Sense::click_and_drag());
-    zero_leaves(&root);
+    //zero_leaves(&root);
 
     // Show hover and neighbors
     if let Some(interact) = resp.hover_pos() {
         if let Some(found) = find_node_recursive(interact, root.clone(), rectangle) {
-            if let NodeContent::Leaf(value) = &mut found.borrow_mut().content {
-                *value = 0.95;
+            if resp.clicked() || resp.dragged() {
+                if let NodeContent::Leaf(value) = &mut found.borrow_mut().content {
+                    *value = 0.95;
+                }
             }
 
+            /* 
             for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
                 //eprintln!("BEGIN NEIGHBOR {edge:?}");
                 neighbors(&found, edge, &mut |node| {
@@ -75,6 +80,7 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
                     Node::from_value(0.0, Some(parent.clone()))
                 }));
             }
+            */
         }
     }
 
@@ -308,12 +314,48 @@ impl From<usize> for Quadrant {
 
 
 impl Node {
-    fn from_value(value: f32, parent: Option<NodeRef>) -> NodeRef {
+    fn from_content(content: NodeContent, parent: Option<NodeRef>) -> NodeRef {
         let level = parent.as_ref().map(|p| p.borrow().level + 1).unwrap_or(0);
         Rc::new(RefCell::new(Node {
             level,
             parent,
-            content: NodeContent::Leaf(value),
+            content,
         }))
+    }
+}
+
+fn step_tree(read_tree: NodeRef, parent: Option<NodeRef>) -> NodeRef {
+    let empty_node = Node::from_content(NodeContent::Leaf(0.0), parent.clone());
+    match read_tree.borrow().content.clone() {
+        NodeContent::Branch(branches) => {
+            let content =
+            NodeContent::Branch(branches.map(|branch| {
+                step_tree(branch, Some(empty_node.clone()))
+            }));
+
+            empty_node.borrow_mut().content = content;
+            empty_node
+        },
+        NodeContent::Leaf(center) => {
+            let mut sum = 0.0;
+
+            let our_level = read_tree.borrow().level;
+
+            for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+                neighbors(&read_tree, edge, &mut |neighbor| {
+                    let borrowed = neighbor.borrow();
+                    let neighbor_level = borrowed.level;
+                    let NodeContent::Leaf(value) = borrowed.content.clone() else { return };
+                    sum += value / 2_f32.powf(1.0 * (neighbor_level as f32 - our_level as f32));
+                });
+            }
+
+            sum /= 5.0;
+
+            let r = 0.99;
+            let ret = sum * (1.0 - r) + center * r; 
+            empty_node.borrow_mut().content = NodeContent::Leaf(ret);
+            empty_node
+        },
     }
 }
