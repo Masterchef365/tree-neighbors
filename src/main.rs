@@ -261,7 +261,7 @@ fn neighbor_func(
     let branches = branches.clone();
 
     if let Some(adj) = adjacent_quadrant(quad, edge) {
-        down_func(&branches[adj as usize], edge, up_tracking, f);
+        down_func(&branches[adj as usize], edge, &up_tracking, f);
     } else {
         up_tracking.push(quad);
         neighbor_func(&parent, edge, up_tracking, f);
@@ -271,7 +271,7 @@ fn neighbor_func(
 fn down_func(
     node: &NodeRef,
     edge: Edge,
-    mut up_tracking: Vec<Quadrant>,
+    up_tracking: &[Quadrant],
     f: &mut impl FnMut(NodeRef),
 ) {
     //debug_borrow!(node);
@@ -279,12 +279,12 @@ fn down_func(
     match content {
         NodeContent::Leaf(_) => f(node.clone()),
         NodeContent::Branch(branches) => {
-            if let Some(quad) = up_tracking.pop() {
+            if let Some((quad, xs)) = up_tracking.split_last() {
                 let mirrored = quad.mirror(edge);
-                down_func(&branches[mirrored as usize], edge, up_tracking, f);
+                down_func(&branches[mirrored as usize], edge, xs, f);
             } else {
                 for quad in edge.neighbor_quadrants() {
-                    down_func(&branches[quad as usize], edge, up_tracking.clone(), f);
+                    down_func(&branches[quad as usize], edge, &[], f);
                 }
             }
         }
