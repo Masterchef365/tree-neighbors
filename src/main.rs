@@ -4,7 +4,7 @@ use eframe::egui::{CentralPanel, Color32, Frame, Pos2, Rect, Sense, Stroke, Ui, 
 use rand::Rng;
 
 fn main() {
-    let mut tree = random_tree(130.0, None);
+    let mut tree = random_tree(5.0, None);
 
     eframe::run_simple_native("tree test", Default::default(), move |ctx, _frame| {
         CentralPanel::default().show(ctx, |ui| {
@@ -52,11 +52,9 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
     // Show hover and neighbors
     if let Some(interact) = resp.hover_pos() {
         if let Some(found) = find_node_recursive(interact, root.clone(), rectangle) {
-            /*
             if let NodeContent::Leaf(value) = &mut found.borrow_mut().content {
                 *value = 0.75;
             }
-            */
 
             for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
                 //eprintln!("BEGIN NEIGHBOR {edge:?}");
@@ -65,7 +63,6 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
                     //debug_borrow!(node);
                     if let NodeContent::Leaf(value) = &mut node.borrow_mut().content {
                         *value = 0.20;
-                        dbg!(value);
                     }
                 });
                 //eprintln!("END NEIGHBOR");
@@ -164,15 +161,15 @@ impl Quadrant {
         let horiz = matches!(edge, Edge::Left | Edge::Right);
 
         match (self, horiz) {
-            (Self::TopLeft, true) => Self::BotRight,
-            (Self::TopRight, true) => Self::BotLeft,
-            (Self::BotLeft, true) => Self::TopRight,
-            (Self::BotRight, true) => Self::TopLeft,
+            (Self::TopLeft, false) => Self::BotLeft,
+            (Self::TopRight, false) => Self::BotRight,
+            (Self::BotLeft, false) => Self::TopLeft,
+            (Self::BotRight, false) => Self::TopRight,
 
-            (Self::TopLeft, false) => Self::TopRight,
-            (Self::TopRight, false) => Self::TopLeft,
-            (Self::BotLeft, false) => Self::BotRight,
-            (Self::BotRight, false) => Self::BotLeft,
+            (Self::TopLeft, true) => Self::TopRight,
+            (Self::TopRight, true) => Self::TopLeft,
+            (Self::BotLeft, true) => Self::BotRight,
+            (Self::BotRight, true) => Self::BotLeft,
         }
     }
 }
@@ -248,13 +245,13 @@ fn neighbor_func(
         .map(Quadrant::from)
         .expect("Parent did not contain child");
 
-    up_tracking.push(quad);
 
     let branches = branches.clone();
 
     if let Some(adj) = adjacent_quadrant(quad, edge) {
         down_func(&branches[adj as usize], edge, up_tracking, f);
     } else {
+        up_tracking.push(quad);
         neighbor_func(&parent, edge, up_tracking, f);
     }
 }
