@@ -346,7 +346,9 @@ fn step_tree(read_tree: NodeRef, parent: Option<NodeRef>) -> NodeRef {
                     let borrowed = neighbor.borrow();
                     let neighbor_level = borrowed.level;
                     let NodeContent::Leaf(value) = borrowed.content.clone() else { return };
-                    sum += value / 2_f32.powf(1.0 * (neighbor_level as f32 - our_level as f32).max(0.0));
+
+                    let interface_size = 2_f32.powf(1.0 * (our_level as f32 - neighbor_level as f32).min(0.0));
+                    sum += value * interface_size;
                 });
             }
 
