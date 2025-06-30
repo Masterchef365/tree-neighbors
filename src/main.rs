@@ -337,7 +337,7 @@ fn step_tree(read_tree: NodeRef, parent: Option<NodeRef>) -> NodeRef {
             empty_node
         },
         NodeContent::Leaf(center) => {
-            let mut sum = 0.0;
+            let mut sum = center;
 
             let our_level = read_tree.borrow().level;
 
@@ -346,15 +346,15 @@ fn step_tree(read_tree: NodeRef, parent: Option<NodeRef>) -> NodeRef {
                     let borrowed = neighbor.borrow();
                     let neighbor_level = borrowed.level;
                     let NodeContent::Leaf(value) = borrowed.content.clone() else { return };
-                    sum += value / 2_f32.powf(1.0 * (neighbor_level as f32 - our_level as f32));
+                    sum += value / 2_f32.powf(1.0 * (neighbor_level as f32 - our_level as f32).max(0.0));
                 });
             }
 
             sum /= 5.0;
 
-            let r = 0.99;
-            let ret = sum * (1.0 - r) + center * r; 
-            empty_node.borrow_mut().content = NodeContent::Leaf(ret);
+            //let r = 0.99;
+            //let ret = sum * (1.0 - r) + center * r; 
+            empty_node.borrow_mut().content = NodeContent::Leaf(sum);
             empty_node
         },
     }
