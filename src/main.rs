@@ -1,15 +1,18 @@
 use std::{cell::RefCell, rc::Rc};
 
-use eframe::egui::{CentralPanel, Color32, Frame, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{CentralPanel, Color32, Frame, Pos2, Rect, Scene, Sense, Stroke, Ui, Vec2};
 use rand::Rng;
 
 fn main() {
-    let mut tree = random_tree(5.0, None);
+    let mut tree = random_tree(1.0, None);
 
+    let mut scene_rect = Rect::ZERO;
     eframe::run_simple_native("tree test", Default::default(), move |ctx, _frame| {
         CentralPanel::default().show(ctx, |ui| {
             Frame::canvas(ui.style()).show(ui, |ui| {
-                draw_tree(ui, tree.clone());
+                Scene::new().zoom_range(0.0..=100.0).show(ui, &mut scene_rect, |ui| {
+                    draw_tree(ui, tree.clone());
+                });
             });
         });
     })
@@ -53,7 +56,7 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
     if let Some(interact) = resp.hover_pos() {
         if let Some(found) = find_node_recursive(interact, root.clone(), rectangle) {
             if let NodeContent::Leaf(value) = &mut found.borrow_mut().content {
-                *value = 0.75;
+                *value = 0.95;
             }
 
             for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
@@ -62,10 +65,20 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
                     //eprintln!("MUT");
                     //debug_borrow!(node);
                     if let NodeContent::Leaf(value) = &mut node.borrow_mut().content {
-                        *value = 0.20;
+                        *value = 0.75;
                     }
                 });
                 //eprintln!("END NEIGHBOR");
+            }
+
+            if resp.clicked() || resp.dragged() {
+                let parent = found.clone();
+                found.borrow_mut().content = NodeContent::Branch([(); 4].map(|_| {
+                    Rc::new(RefCell::new(Node {
+                        parent: Some(parent.clone()),
+                        content: NodeContent::Leaf(0.0),
+                    }))
+                }));
             }
         }
     }
@@ -244,7 +257,6 @@ fn neighbor_func(
         .position(|branch| Rc::ptr_eq(&node, branch))
         .map(Quadrant::from)
         .expect("Parent did not contain child");
-
 
     let branches = branches.clone();
 
