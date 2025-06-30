@@ -18,11 +18,13 @@ fn main() {
 
 type NodeRef = Rc<RefCell<Node>>;
 
+#[derive(Clone)]
 struct Node {
     parent: Option<NodeRef>,
     content: NodeContent,
 }
 
+#[derive(Clone)]
 enum NodeContent {
     Branch([NodeRef; 4]),
     Leaf(f32),
@@ -47,19 +49,26 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
     let (rectangle, resp) = ui.allocate_exact_size(Vec2::splat(500.0), Sense::click_and_drag());
     zero_leaves(&root);
 
+    // Show hover and neighbors
     if let Some(interact) = resp.hover_pos() {
         if let Some(found) = find_node_recursive(interact, root.clone(), rectangle) {
+            /*
             if let NodeContent::Leaf(value) = &mut found.borrow_mut().content {
                 *value = 0.75;
             }
+            */
 
             for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
-                neighbor_func(&root, edge, vec![], &mut |node| {
+                //eprintln!("BEGIN NEIGHBOR {edge:?}");
+                neighbor_func(&found, edge, vec![], &mut |node| {
+                    //eprintln!("MUT");
+                    //debug_borrow!(node);
                     if let NodeContent::Leaf(value) = &mut node.borrow_mut().content {
                         *value = 0.20;
                         dbg!(value);
                     }
                 });
+                //eprintln!("END NEIGHBOR");
             }
         }
     }
@@ -198,18 +207,38 @@ fn adjacent_quadrant(quad: Quadrant, edge: Edge) -> Option<Quadrant> {
     }
 }
 
+/*
+#[macro_export]
+macro_rules! debug_borrow {
+    ($var:ident) => {
+        {
+            let ptr = ::std::rc::Rc::as_ptr(&$var);
+            eprintln!(
+                "[{}:{}:{}] {}: {:?} borrow",
+                file!(),
+                line!(),
+                column!(),
+                stringify!($var),
+                ptr
+            );
+        }
+    };
+}
+*/
+
 fn neighbor_func(
     node: &NodeRef,
     edge: Edge,
     mut up_tracking: Vec<Quadrant>,
     f: &mut impl FnMut(NodeRef),
 ) {
-    let borrow = node.borrow();
-    let Some(parent) = borrow.parent.as_ref() else {
+    //debug_borrow!(node);
+    let Some(parent) = node.borrow().parent.clone() else {
         // Root has no neighbors
         return;
     };
-    let NodeContent::Branch(branches) = &parent.borrow().content else {
+    //debug_borrow!(parent);
+    let NodeContent::Branch(branches) = &parent.borrow().content.clone() else {
         panic!("Invalid tree; parent node is a leaf!");
     };
 
@@ -221,10 +250,12 @@ fn neighbor_func(
 
     up_tracking.push(quad);
 
+    let branches = branches.clone();
+
     if let Some(adj) = adjacent_quadrant(quad, edge) {
         down_func(&branches[adj as usize], edge, up_tracking, f);
     } else {
-        neighbor_func(parent, edge, up_tracking, f);
+        neighbor_func(&parent, edge, up_tracking, f);
     }
 }
 
@@ -234,8 +265,9 @@ fn down_func(
     mut up_tracking: Vec<Quadrant>,
     f: &mut impl FnMut(NodeRef),
 ) {
-    let borrow = node.borrow();
-    match &borrow.content {
+    //debug_borrow!(node);
+    let content = node.borrow().content.clone();
+    match content {
         NodeContent::Leaf(_) => f(node.clone()),
         NodeContent::Branch(branches) => {
             if let Some(quad) = up_tracking.pop() {
