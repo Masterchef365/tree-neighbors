@@ -52,6 +52,15 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
             if let NodeContent::Leaf(value) = &mut found.borrow_mut().content {
                 *value = 0.75;
             }
+
+            for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+                neighbor_func(&root, edge, vec![], &mut |node| {
+                    if let NodeContent::Leaf(value) = &mut node.borrow_mut().content {
+                        *value = 0.20;
+                        dbg!(value);
+                    }
+                });
+            }
         }
     }
 
@@ -230,7 +239,8 @@ fn down_func(
         NodeContent::Leaf(_) => f(node.clone()),
         NodeContent::Branch(branches) => {
             if let Some(quad) = up_tracking.pop() {
-                down_func(&branches[quad as usize], edge, up_tracking, f);
+                let mirrored = quad.mirror(edge);
+                down_func(&branches[mirrored as usize], edge, up_tracking, f);
             } else {
                 for quad in edge.neighbor_quadrants() {
                     down_func(&branches[quad as usize], edge, up_tracking.clone(), f);
