@@ -57,7 +57,7 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
         if let Some(found) = find_node_recursive(interact, root.clone(), rectangle) {
             if resp.clicked() || resp.dragged() {
                 if let NodeContent::Leaf(value) = &mut found.borrow_mut().content {
-                    *value = 0.95;
+                    *value += 0.95;
                 }
             }
 
@@ -347,7 +347,16 @@ fn step_tree(read_tree: NodeRef, parent: Option<NodeRef>) -> NodeRef {
                     let neighbor_level = borrowed.level;
                     let NodeContent::Leaf(value) = borrowed.content.clone() else { return };
 
-                    let interface_size = 2_f32.powf(1.0 * (our_level as f32 - neighbor_level as f32).min(0.0));
+                    // How big is our side length compared to this neighbor? 
+                    // Negative when neighbor is finer
+                    let relative_level = our_level as f32 - neighbor_level as f32;
+
+                    // The surface area of contact can't be larger than our surface area!
+                    let relative_level = relative_level.min(0.0);
+
+                    // Get the actual size, in units, of the interface between us and our neighbor
+                    let interface_size = 2_f32.powf(relative_level);
+
                     sum += value * interface_size;
                 });
             }
