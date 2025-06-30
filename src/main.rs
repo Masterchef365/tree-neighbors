@@ -10,9 +10,11 @@ fn main() {
     eframe::run_simple_native("tree test", Default::default(), move |ctx, _frame| {
         CentralPanel::default().show(ctx, |ui| {
             Frame::canvas(ui.style()).show(ui, |ui| {
-                Scene::new().zoom_range(0.0..=100.0).show(ui, &mut scene_rect, |ui| {
-                    draw_tree(ui, tree.clone());
-                });
+                Scene::new()
+                    .zoom_range(0.0..=100.0)
+                    .show(ui, &mut scene_rect, |ui| {
+                        draw_tree(ui, tree.clone());
+                    });
             });
         });
     })
@@ -61,7 +63,7 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
 
             for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
                 //eprintln!("BEGIN NEIGHBOR {edge:?}");
-                neighbors(&found, edge, &mut |node| {
+                find_neighbors(&found, edge, &mut |node| {
                     //eprintln!("MUT");
                     //debug_borrow!(node);
                     if let NodeContent::Leaf(value) = &mut node.borrow_mut().content {
@@ -236,64 +238,46 @@ macro_rules! debug_borrow {
 }
 */
 
-fn neighbors(
-    node: &NodeRef,
-    edge: Edge,
-    f: &mut impl FnMut(NodeRef),
-) {
-    up_func(node, edge, vec![], f);
-}
-
-fn up_func(
-    node: &NodeRef,
-    edge: Edge,
-    mut up_tracking: Vec<Quadrant>,
-    f: &mut impl FnMut(NodeRef),
-) {
-    //debug_borrow!(node);
-    let Some(parent) = node.borrow().parent.clone() else {
-        // Root has no neighbors
-        return;
-    };
-    //debug_borrow!(parent);
-    let NodeContent::Branch(branches) = &parent.borrow().content.clone() else {
-        panic!("Invalid tree; parent node is a leaf!");
-    };
-
-    let quad = branches
-        .iter()
-        .position(|branch| Rc::ptr_eq(&node, branch))
-        .map(Quadrant::from)
-        .expect("Parent did not contain child");
-
-    let branches = branches.clone();
-
-    if let Some(adj) = adjacent_quadrant(quad, edge) {
-        down_func(&branches[adj as usize], edge, &up_tracking, f);
-    } else {
-        up_tracking.push(quad);
-        up_func(&parent, edge, up_tracking, f);
+fn find_neighbors(node: &NodeRef, edge: Edge, callback: &mut impl FnMut(&NodeRef)) {
+    if let Some(root_neighbor) = find_neighbor_up(node, edge) {
+        find_neighbors_down(&root_neighbor, edge, callback);
     }
 }
 
-fn down_func(
-    node: &NodeRef,
-    edge: Edge,
-    up_tracking: &[Quadrant],
-    f: &mut impl FnMut(NodeRef),
-) {
-    //debug_borrow!(node);
+fn find_neighbor_up(node: &NodeRef, edge: Edge) -> Option<NodeRef> {
+    let Some(parent) = node.borrow().parent.clone() else {
+        // root has no neighbors
+        return None;
+    };
+    let NodeContent::Branch(siblings) = &parent.borrow().content.clone() else {
+        panic!("Invalid tree; parent node is a leaf!");
+    };
+    let quad = siblings
+        .iter()
+        .position(|branch| Rc::ptr_eq(&node, branch))
+        .map(Quadrant::from)
+        .unwrap();
+    if let Some(adj) = adjacent_quadrant(quad, edge) {
+        // if we have a sibling on the edge we're checking, that's our neighbor.
+        Some(siblings[adj as usize].clone())
+    } else {
+        let parent_sibling = find_neighbor_up(&parent, edge)?;
+        match &parent_sibling.borrow().content {
+            // if we don't have a direct sibling, our neighbor is one of the children of our parent's neighbor.
+            NodeContent::Branch(branches) => Some(branches[quad.mirror(edge) as usize].clone()),
+            // if our parent's neighbor has no children, then that's our neighbor.
+            NodeContent::Leaf(_) => Some(parent_sibling.clone()),
+        }
+    }
+}
+
+fn find_neighbors_down(node: &NodeRef, edge: Edge, callback: &mut impl FnMut(&NodeRef)) {
     let content = node.borrow().content.clone();
     match content {
-        NodeContent::Leaf(_) => f(node.clone()),
-        NodeContent::Branch(branches) => {
-            if let Some((quad, xs)) = up_tracking.split_last() {
-                let mirrored = quad.mirror(edge);
-                down_func(&branches[mirrored as usize], edge, xs, f);
-            } else {
-                for quad in edge.neighbor_quadrants() {
-                    down_func(&branches[quad as usize], edge, &[], f);
-                }
+        NodeContent::Leaf(_) => callback(&node),
+        NodeContent::Branch(children) => {
+            for quad in edge.neighbor_quadrants() {
+                find_neighbors_down(&children[quad as usize], edge, callback);
             }
         }
     }
