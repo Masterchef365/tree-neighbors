@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use eframe::egui::{CentralPanel, Color32, Frame, Rect, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{CentralPanel, Color32, Frame, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use rand::Rng;
 
 fn main() {
@@ -46,10 +46,20 @@ fn random_tree(p: f64, parent: Option<NodeRef>) -> NodeRef {
 
 fn draw_tree(ui: &mut Ui, root: NodeRef) {
     let (rectangle, resp) = ui.allocate_exact_size(Vec2::splat(500.0), Sense::click_and_drag());
-    draw_tree_recursive(ui, root, rectangle);
+    zero_leaves(&root);
+
+    if let Some(interact) = resp.hover_pos() {
+        if let Some(found) = find_node_recursive(interact, root.clone(), rectangle) {
+            if let NodeContent::Leaf(value) = &mut found.borrow_mut().content {
+                *value = 0.75;
+            }
+        }
+    }
+
+    draw_tree_recursive(ui, &root, rectangle);
 }
 
-fn draw_tree_recursive(ui: &mut Ui, node: NodeRef, rect: Rect) {
+fn draw_tree_recursive(ui: &mut Ui, node: &NodeRef, rect: Rect) {
     match &node.borrow().content {
         NodeContent::Leaf(value) => {
             let fill = Color32::from_gray((255.0 * value) as u8);
@@ -64,7 +74,42 @@ fn draw_tree_recursive(ui: &mut Ui, node: NodeRef, rect: Rect) {
             let rects = [top_left, top_right, bottom_left, bottom_right];
 
             for (branch, rect) in branches.iter().zip(rects) {
-                draw_tree_recursive(ui, branch.clone(), rect);
+                draw_tree_recursive(ui, branch, rect);
+            }
+        }
+    }
+}
+
+fn find_node_recursive(pos: Pos2, node: NodeRef, rect: Rect) -> Option<NodeRef> {
+    match &node.borrow().content {
+        NodeContent::Leaf(_) => {
+            rect.contains(pos).then(|| node.clone())
+        }
+        NodeContent::Branch(branches) => {
+            let (lefts, rights) = rect.split_left_right_at_fraction(0.5);
+            let (top_left, bottom_left) = lefts.split_top_bottom_at_fraction(0.5);
+            let (top_right, bottom_right) = rights.split_top_bottom_at_fraction(0.5);
+            let rects = [top_left, top_right, bottom_left, bottom_right];
+
+            for (branch, rect) in branches.iter().zip(rects) {
+                if rect.contains(pos) {
+                    if let Some(found) = find_node_recursive(pos, branch.clone(), rect) {
+                        return Some(found);
+                    }
+                }
+            }
+
+            None
+        }
+    }
+}
+
+fn zero_leaves(node: &NodeRef) {
+    match &mut node.borrow_mut().content {
+        NodeContent::Leaf(value) => *value = 0.0,
+        NodeContent::Branch(branches) => {
+            for branch in branches {
+                zero_leaves(branch);
             }
         }
     }
