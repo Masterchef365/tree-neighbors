@@ -4,7 +4,7 @@ use eframe::egui::{CentralPanel, Color32, Frame, Pos2, Rect, Scene, Sense, Strok
 use rand::Rng;
 
 fn main() {
-    let mut tree = random_tree(1.0, None);
+    let mut tree = random_tree(0.0, None);
 
     let mut scene_rect = Rect::ZERO;
     eframe::run_simple_native("tree test", Default::default(), move |ctx, _frame| {
@@ -61,7 +61,7 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
 
             for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
                 //eprintln!("BEGIN NEIGHBOR {edge:?}");
-                neighbor_func(&found, edge, vec![], &mut |node| {
+                neighbors(&found, edge, &mut |node| {
                     //eprintln!("MUT");
                     //debug_borrow!(node);
                     if let NodeContent::Leaf(value) = &mut node.borrow_mut().content {
@@ -90,7 +90,7 @@ fn draw_tree_recursive(ui: &mut Ui, node: &NodeRef, rect: Rect) {
     match &node.borrow().content {
         NodeContent::Leaf(value) => {
             let fill = Color32::from_gray((255.0 * value) as u8);
-            let stroke = Stroke::new(1., Color32::WHITE);
+            let stroke = Stroke::new(0.1, Color32::WHITE);
             ui.painter()
                 .rect(rect, 0.0, fill, stroke, eframe::egui::StrokeKind::Outside);
         }
@@ -236,7 +236,15 @@ macro_rules! debug_borrow {
 }
 */
 
-fn neighbor_func(
+fn neighbors(
+    node: &NodeRef,
+    edge: Edge,
+    f: &mut impl FnMut(NodeRef),
+) {
+    up_func(node, edge, vec![], f);
+}
+
+fn up_func(
     node: &NodeRef,
     edge: Edge,
     mut up_tracking: Vec<Quadrant>,
@@ -264,7 +272,7 @@ fn neighbor_func(
         down_func(&branches[adj as usize], edge, &up_tracking, f);
     } else {
         up_tracking.push(quad);
-        neighbor_func(&parent, edge, up_tracking, f);
+        up_func(&parent, edge, up_tracking, f);
     }
 }
 
