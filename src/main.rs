@@ -24,6 +24,7 @@ type NodeRef = Rc<RefCell<Node>>;
 #[derive(Clone)]
 struct Node {
     parent: Option<NodeRef>,
+    level: u32,
     content: NodeContent,
 }
 
@@ -34,10 +35,7 @@ enum NodeContent {
 }
 
 fn random_tree(p: f64, parent: Option<NodeRef>) -> NodeRef {
-    let new_node = Rc::new(RefCell::new(Node {
-        parent,
-        content: NodeContent::Leaf(rand::thread_rng().r#gen()),
-    }));
+    let new_node = Node::from_value(rand::thread_rng().r#gen(), parent);
 
     if rand::thread_rng().gen_bool(p.min(1.0)) {
         let content =
@@ -74,10 +72,7 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
             if resp.clicked() || resp.dragged() {
                 let parent = found.clone();
                 found.borrow_mut().content = NodeContent::Branch([(); 4].map(|_| {
-                    Rc::new(RefCell::new(Node {
-                        parent: Some(parent.clone()),
-                        content: NodeContent::Leaf(0.0),
-                    }))
+                    Node::from_value(0.0, Some(parent.clone()))
                 }));
             }
         }
@@ -308,5 +303,17 @@ impl From<usize> for Quadrant {
             3 => Quadrant::BotRight,
             _ => panic!("Incorrect quadrant index"),
         }
+    }
+}
+
+
+impl Node {
+    fn from_value(value: f32, parent: Option<NodeRef>) -> NodeRef {
+        let level = parent.as_ref().map(|p| p.borrow().level + 1).unwrap_or(0);
+        Rc::new(RefCell::new(Node {
+            level,
+            parent,
+            content: NodeContent::Leaf(value),
+        }))
     }
 }
