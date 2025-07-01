@@ -341,7 +341,9 @@ fn step_tree(read_tree: NodeRef, parent: Option<NodeRef>) -> NodeRef {
 
             let our_level = read_tree.borrow().level;
 
+            let mut count = 1;
             for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+                let mut any_neighbors = false;
                 neighbors(&read_tree, edge, &mut |neighbor| {
                     let borrowed = neighbor.borrow();
                     let neighbor_level = borrowed.level;
@@ -358,10 +360,15 @@ fn step_tree(read_tree: NodeRef, parent: Option<NodeRef>) -> NodeRef {
                     let interface_size = 2_f32.powf(relative_level);
 
                     sum += value * interface_size;
+                    any_neighbors = true;
                 });
+
+                if any_neighbors {
+                    count += 1;
+                }
             }
 
-            sum /= 5.0;
+            sum /= count as f32;
 
             //let r = 0.99;
             //let ret = sum * (1.0 - r) + center * r; 
