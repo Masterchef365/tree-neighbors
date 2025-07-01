@@ -323,14 +323,11 @@ impl Node {
         }))
     }
 
-    fn split(node: NodeRef, parent: Option<NodeRef>) -> NodeRef {
+    fn split(node: NodeRef) {
         let NodeContent::Leaf(value) = node.borrow().content.clone() else { panic!("Can only split leaves") };
 
-        let node = Node::from_content(NodeContent::Leaf(0.0), parent);
         let branches = [(); 4].map(|_| Node::from_content(NodeContent::Leaf(value), Some(node.clone())));
         node.borrow_mut().content = NodeContent::Branch(branches);
-
-        node
     }
 }
 
@@ -383,17 +380,15 @@ fn step_tree(read_tree: NodeRef, parent: Option<NodeRef>) -> NodeRef {
 
             //let r = 0.99;
             //let ret = sum * (1.0 - r) + center * r; 
-            empty_node.borrow_mut().content = NodeContent::Leaf(sum);
 
             let side_length = 1.0 / our_level as f32;
             let area = side_length * side_length;
+
             if sum * area > 1.0 {
-                let cloned = read_tree.clone();
-                //*read_tree.borrow_mut() = Node::split(cloned, parent.clone()).borrow().clone();
-                //step_tree(read_tree, parent.clone())
-                //cloned
-                Node::split(cloned, parent.clone())
+                Node::split(read_tree.clone());
+                step_tree(read_tree, parent.clone())
             } else {
+                empty_node.borrow_mut().content = NodeContent::Leaf(sum);
                 empty_node
             }
         },
