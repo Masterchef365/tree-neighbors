@@ -11,9 +11,11 @@ fn main() {
         ctx.request_repaint();
         CentralPanel::default().show(ctx, |ui| {
             Frame::canvas(ui.style()).show(ui, |ui| {
-                Scene::new().zoom_range(0.0..=100.0).show(ui, &mut scene_rect, |ui| {
-                    draw_tree(ui, tree.clone());
-                });
+                Scene::new()
+                    .zoom_range(0.0..=100.0)
+                    .show(ui, &mut scene_rect, |ui| {
+                        draw_tree(ui, tree.clone());
+                    });
             });
         });
         tree = step_tree(tree.clone(), None);
@@ -57,11 +59,11 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
         if let Some(found) = find_node_recursive(interact, root.clone(), rectangle) {
             if resp.clicked() || resp.dragged() {
                 if let NodeContent::Leaf(value) = &mut found.borrow_mut().content {
-                    *value += 3.95;
+                    *value += 30.95;
                 }
             }
 
-            /* 
+            /*
             for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
                 //eprintln!("BEGIN NEIGHBOR {edge:?}");
                 neighbors(&found, edge, &mut |node| {
@@ -237,11 +239,7 @@ macro_rules! debug_borrow {
 }
 */
 
-fn neighbors(
-    node: &NodeRef,
-    edge: Edge,
-    f: &mut impl FnMut(NodeRef),
-) {
+fn neighbors(node: &NodeRef, edge: Edge, f: &mut impl FnMut(NodeRef)) {
     up_func(node, edge, vec![], f);
 }
 
@@ -277,12 +275,7 @@ fn up_func(
     }
 }
 
-fn down_func(
-    node: &NodeRef,
-    edge: Edge,
-    up_tracking: &[Quadrant],
-    f: &mut impl FnMut(NodeRef),
-) {
+fn down_func(node: &NodeRef, edge: Edge, up_tracking: &[Quadrant], f: &mut impl FnMut(NodeRef)) {
     //debug_borrow!(node);
     let content = node.borrow().content.clone();
     match content {
@@ -312,7 +305,6 @@ impl From<usize> for Quadrant {
     }
 }
 
-
 impl Node {
     fn from_content(content: NodeContent, parent: Option<NodeRef>) -> NodeRef {
         let level = parent.as_ref().map(|p| p.borrow().level + 1).unwrap_or(0);
@@ -324,40 +316,58 @@ impl Node {
     }
 
     fn split(node: NodeRef) {
-        let NodeContent::Leaf(value) = node.borrow().content.clone() else { panic!("Can only split leaves") };
+        let NodeContent::Leaf(value) = node.borrow().content.clone() else {
+            panic!("Can only split leaves")
+        };
 
-        let branches = [(); 4].map(|_| Node::from_content(NodeContent::Leaf(value), Some(node.clone())));
+        let branches =
+            [(); 4].map(|_| Node::from_content(NodeContent::Leaf(value), Some(node.clone())));
         node.borrow_mut().content = NodeContent::Branch(branches);
     }
 }
 
 fn step_tree(read_tree: NodeRef, parent: Option<NodeRef>) -> NodeRef {
     let empty_node = Node::from_content(NodeContent::Leaf(0.0), parent.clone());
-    let content = read_tree.borrow().content.clone(); 
+    let content = read_tree.borrow().content.clone();
+    let our_level = read_tree.borrow().level;
+
+    // Splitting logic
+    let side_length = 1.0 / our_level as f32;
+    let area = side_length * side_length;
+
     match content {
         NodeContent::Branch(branches) => {
-            let content =
-            NodeContent::Branch(branches.map(|branch| {
-                step_tree(branch, Some(empty_node.clone()))
-            }));
+            let results = branches.map(|branch| step_tree(branch, Some(empty_node.clone())));
 
+            // Attempt a merge
+            if let Some(sum) = branch_sum(results.clone()) {
+                let avg = sum / 4.0;
+                if avg * area < 1.0 {
+                    let content = NodeContent::Leaf(avg);
+                    empty_node.borrow_mut().content = content;
+                    return empty_node;
+                }
+            }
+
+            let content = NodeContent::Branch(results);
             empty_node.borrow_mut().content = content;
             empty_node
-        },
+        }
         NodeContent::Leaf(center) => {
             let mut sum = center;
 
-            let our_level = read_tree.borrow().level;
-
+            // Blurring
             let mut count = 1;
             for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
                 let mut any_neighbors = false;
                 neighbors(&read_tree, edge, &mut |neighbor| {
                     let borrowed = neighbor.borrow();
                     let neighbor_level = borrowed.level;
-                    let NodeContent::Leaf(value) = borrowed.content.clone() else { return };
+                    let NodeContent::Leaf(value) = borrowed.content.clone() else {
+                        return;
+                    };
 
-                    // How big is our side length compared to this neighbor? 
+                    // How big is our side length compared to this neighbor?
                     // Negative when neighbor is finer
                     let relative_level = our_level as f32 - neighbor_level as f32;
 
@@ -376,13 +386,7 @@ fn step_tree(read_tree: NodeRef, parent: Option<NodeRef>) -> NodeRef {
                 }
             }
 
-            sum /= count as f32;
-
-            //let r = 0.99;
-            //let ret = sum * (1.0 - r) + center * r; 
-
-            let side_length = 1.0 / our_level as f32;
-            let area = side_length * side_length;
+            sum /= count as f32 + 0.1;
 
             if sum * area > 1.0 {
                 Node::split(read_tree.clone());
@@ -391,6 +395,17 @@ fn step_tree(read_tree: NodeRef, parent: Option<NodeRef>) -> NodeRef {
                 empty_node.borrow_mut().content = NodeContent::Leaf(sum);
                 empty_node
             }
-        },
+        }
     }
+}
+
+fn branch_sum(branches: [NodeRef; 4]) -> Option<f32> {
+    let mut sum = 0.0;
+    for branch in branches {
+        let NodeContent::Leaf(value) = branch.borrow().content else {
+            return None;
+        };
+        sum += value;
+    }
+    Some(sum)
 }
