@@ -4,7 +4,7 @@ use eframe::egui::{CentralPanel, Color32, Frame, Pos2, Rect, Scene, Sense, Strok
 use rand::Rng;
 
 fn main() {
-    let mut tree = random_tree(300.0, None);
+    let mut tree = random_tree(1.0, None);
 
     let mut scene_rect = Rect::ZERO;
     eframe::run_simple_native("tree test", Default::default(), move |ctx, _frame| {
@@ -57,7 +57,7 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
         if let Some(found) = find_node_recursive(interact, root.clone(), rectangle) {
             if resp.clicked() || resp.dragged() {
                 if let NodeContent::Leaf(value) = &mut found.borrow_mut().content {
-                    *value += 0.95;
+                    *value += 3.95;
                 }
             }
 
@@ -91,7 +91,7 @@ fn draw_tree_recursive(ui: &mut Ui, node: &NodeRef, rect: Rect) {
     match &node.borrow().content {
         NodeContent::Leaf(value) => {
             let fill = Color32::from_gray((255.0 * value) as u8);
-            let stroke = Stroke::new(0.1, Color32::WHITE);
+            let stroke = Stroke::new(10.0 / 2_f32.powi(node.borrow().level as i32), Color32::GRAY);
             ui.painter()
                 .rect(rect, 0.0, fill, stroke, eframe::egui::StrokeKind::Outside);
         }
@@ -385,7 +385,9 @@ fn step_tree(read_tree: NodeRef, parent: Option<NodeRef>) -> NodeRef {
             //let ret = sum * (1.0 - r) + center * r; 
             empty_node.borrow_mut().content = NodeContent::Leaf(sum);
 
-            if sum / our_level as f32 > 0.2 {
+            let side_length = 1.0 / our_level as f32;
+            let area = side_length * side_length;
+            if sum * area > 1.0 {
                 let cloned = read_tree.clone();
                 //*read_tree.borrow_mut() = Node::split(cloned, parent.clone()).borrow().clone();
                 //step_tree(read_tree, parent.clone())
