@@ -8,9 +8,7 @@ fn main() {
 
     let f = |x: f32| (x * 10.0).cos();
     let f = InputFunction::from_func(Rc::new(f));
-    for _ in 0..10 {
-        insert_function_rec(tree.clone(), 1e-6, 20, f.clone());
-    }
+    insert_function_rec(tree.clone(), 1e-6, 20, f.clone());
 
     let mut scene_rect = Rect::ZERO;
     eframe::run_simple_native("tree test", Default::default(), move |ctx, _frame| {
@@ -412,6 +410,7 @@ fn insert_function_rec(
 
             let area = 1.0;//2_f32.powi(-2 * level as i32);
             if residual * area > max_residual_times_area {
+            //if true {
                 refine_cell(tree.clone(), f.clone());
                 insert_function_rec(tree.clone(), max_residual_times_area, max_level, f);
             }
@@ -452,7 +451,7 @@ fn sample_max(level: usize, begin: f32, end: f32, f: impl Fn(f32) -> f32) -> f32
     let mut x = begin;
     let mut max: f32 = 0.0;
     while x < end {
-        max = max.max(f(x) * step_size);
+        max = max.max(f(x));
         x += step_size;
     }
     max
