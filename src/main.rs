@@ -8,7 +8,7 @@ fn main() {
 
     let f = |x: f32| (x * 10.0).cos();
     let f = InputFunction::from_func(Rc::new(f));
-    insert_function_rec(tree.clone(), 1e-6, 20, f.clone());
+    insert_function_rec(tree.clone(), 1e-2, 20, f.clone());
 
     let mut scene_rect = Rect::ZERO;
     eframe::run_simple_native("tree test", Default::default(), move |ctx, _frame| {
@@ -406,7 +406,7 @@ fn insert_function_rec(
         NodeContent::Leaf(value) => {
             // Four steps
             let residual =
-                sample_max(f.level + 2, f.begin, f.end, |x| (value - f.call(x)).abs());
+                sample_max(f.level + 5, f.begin, f.end, |x| (value - f.call(x)).abs());
 
             let area = 1.0;//2_f32.powi(-2 * level as i32);
             if residual * area > max_residual_times_area {
@@ -434,7 +434,7 @@ fn insert_function_rec(
 }
 
 fn sample_average(max_level: usize, begin: f32, end: f32, f: impl Fn(f32) -> f32) -> f32 {
-    let step_size = 1.0 / max_level as f32;
+    let step_size = 2_f32.powi(-(max_level as i32));
     let mut x = begin;
     let mut sum = 0.0;
     let mut steps = 0;
