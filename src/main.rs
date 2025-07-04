@@ -6,7 +6,7 @@ use rand::Rng;
 fn gen_tree(resolution: f32) -> NodeRef {
     let mut tree = random_tree(0.0, None);
 
-    let f = |x: f32| (x * 10.0).cos();
+    let f = |x: f32| (1.0 - 4.0 * (x - 0.5).powi(2)).sqrt();
     let f = InputFunction::from_func(Rc::new(f));
     insert_function_rec(tree.clone(), resolution, 20, f.clone());
     tree
@@ -433,7 +433,6 @@ fn insert_function_rec(
 
             let area = 2_f32.powi(-(level as i32));
             if residual * area > max_residual_times_area {
-            //if true {
                 refine_cell(tree.clone(), f.clone());
                 insert_function_rec(tree.clone(), max_residual_times_area, max_level, f);
             }
@@ -457,16 +456,20 @@ fn insert_function_rec(
 }
 
 fn sample_average(max_level: usize, begin: f32, end: f32, f: impl Fn(f32) -> f32) -> f32 {
-    let step_size = 2_f32.powi(-(max_level as i32));
-    let mut x = begin;
-    let mut sum = 0.0;
-    let mut steps = 0;
-    while x < end {
-        sum += f(x);
-        x += step_size;
-        steps += 1;
+    let step_size = 2f32.powi(-(max_level as i32));
+    let steps = ((end - begin) / step_size).ceil() as usize;
+    if steps == 0 {
+        return 0.0;
     }
-    sum / (steps as f32).max(1.0)
+
+    let mut integral = 0.0;
+    for i in 0..steps {
+        let x0 = begin + i as f32 * step_size;
+        let x1 = (x0 + step_size).min(end);
+        integral += (f(x0) + f(x1)) * 0.5 * (x1 - x0);
+    }
+
+    integral / (end - begin).max(f32::EPSILON)
 }
 
 fn sample_max(level: usize, begin: f32, end: f32, f: impl Fn(f32) -> f32) -> f32 {
@@ -509,8 +512,8 @@ fn sample_grid_at_y_rec(node: NodeRef, y: f32, rect: Rect, f: &impl Fn(f32, f32,
 fn draw_func_at_y(tree: &NodeRef, ui: &mut Ui, disp_rect: Rect, y: f32, y_offset: f32, amplitude: f32) {
     sample_grid_at_y(tree.clone(), y, &|min_x, max_x, value| {
         ui.painter().line_segment([
-            Pos2::new(disp_rect.min.lerp(disp_rect.max, min_x).x, value * amplitude + y_offset), 
-            Pos2::new(disp_rect.min.lerp(disp_rect.max, max_x).x, value * amplitude + y_offset), 
+            Pos2::new(disp_rect.min.lerp(disp_rect.max, min_x).x, -value * amplitude + y_offset), 
+            Pos2::new(disp_rect.min.lerp(disp_rect.max, max_x).x, -value * amplitude + y_offset), 
         ], Stroke::new(1.0, Color32::GREEN));
     });
     ui.painter().line_segment([Pos2::new(disp_rect.min.x, y_offset), Pos2::new(disp_rect.max.x, y_offset)], Stroke::new(1.0, Color32::LIGHT_GRAY));
