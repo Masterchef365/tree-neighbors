@@ -6,9 +6,11 @@ use rand::Rng;
 fn main() {
     let mut tree = random_tree(0.0, None);
 
-    let f = |x: f32| dbg!(x * 10.0).cos() * 100_000.0;
+    let f = |x: f32| (x * 10.0).cos();
     let f = InputFunction::from_func(Rc::new(f));
-    insert_function_rec(tree.clone(), 1.0, 10, f);
+    for _ in 0..10 {
+        insert_function_rec(tree.clone(), 1e-6, 20, f.clone());
+    }
 
     let mut scene_rect = Rect::ZERO;
     eframe::run_simple_native("tree test", Default::default(), move |ctx, _frame| {
@@ -101,7 +103,12 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
 fn draw_tree_recursive(ui: &mut Ui, node: &NodeRef, rect: Rect) {
     match &node.borrow().content {
         NodeContent::Leaf(value) => {
-            let fill = Color32::from_gray((255.0 * value) as u8);
+            let fill = if *value > 0.0 {
+                Color32::BLACK.lerp_to_gamma(Color32::ORANGE, *value)
+            } else {
+                Color32::BLACK.lerp_to_gamma(Color32::LIGHT_BLUE, -value)
+            };
+            //let fill = Color32::from_gray((255.0 * value) as u8);
             let stroke = Stroke::new(0.1, Color32::WHITE);
             ui.painter()
                 .rect(rect, 0.0, fill, stroke, eframe::egui::StrokeKind::Outside);
@@ -367,12 +374,12 @@ fn refine_cell(node: NodeRef, input_function: InputFunction) {
     } else {
         // Average value of the function
         let resolution = 2;
-        crappy_integral(
+        sample_average(
             level + resolution,
             input_function.begin,
             input_function.end,
             |x| input_function.call(x),
-        ) * 2_f32.powi(-(resolution as i32))
+        )// * 2_f32.powi(-(resolution as i32))
     };
 
     let branches = [(); 4].map(|_| Rc::new(RefCell::new(Node {
@@ -401,9 +408,9 @@ fn insert_function_rec(
         NodeContent::Leaf(value) => {
             // Four steps
             let residual =
-                crappy_integral(f.level + 2, f.begin, f.end, |x| (value - f.call(x)).abs());
+                sample_max(f.level + 2, f.begin, f.end, |x| (value - f.call(x)).abs());
 
-            let area = 2_f32.powi(-2 * level as i32);
+            let area = 1.0;//2_f32.powi(-2 * level as i32);
             if residual * area > max_residual_times_area {
                 refine_cell(tree.clone(), f.clone());
                 insert_function_rec(tree.clone(), max_residual_times_area, max_level, f);
@@ -427,13 +434,26 @@ fn insert_function_rec(
     }
 }
 
-fn crappy_integral(max_level: usize, begin: f32, end: f32, f: impl Fn(f32) -> f32) -> f32 {
+fn sample_average(max_level: usize, begin: f32, end: f32, f: impl Fn(f32) -> f32) -> f32 {
     let step_size = 1.0 / max_level as f32;
     let mut x = begin;
     let mut sum = 0.0;
+    let mut steps = 0;
     while x < end {
-        sum += f(x) * step_size;
+        sum += f(x);
+        x += step_size;
+        steps += 1;
+    }
+    sum / (steps as f32).max(1.0)
+}
+
+fn sample_max(level: usize, begin: f32, end: f32, f: impl Fn(f32) -> f32) -> f32 {
+    let step_size = 1.0 / level as f32;
+    let mut x = begin;
+    let mut max: f32 = 0.0;
+    while x < end {
+        max = max.max(f(x) * step_size);
         x += step_size;
     }
-    sum
+    max
 }
