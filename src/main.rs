@@ -6,7 +6,7 @@ use rand::Rng;
 fn main() {
     let mut tree = random_tree(0.0, None);
 
-    let f = |x: f32| dbg!(x).cos() * 100.0;
+    let f = |x: f32| dbg!(x * 10.0).cos() * 100_000.0;
     let f = InputFunction::from_func(Rc::new(f));
     insert_function_rec(tree.clone(), 1.0, 10, f);
 
@@ -58,6 +58,7 @@ fn random_tree(p: f64, parent: Option<NodeRef>) -> NodeRef {
 
 fn draw_tree(ui: &mut Ui, root: NodeRef) {
     let (rectangle, resp) = ui.allocate_exact_size(Vec2::splat(500.0), Sense::click_and_drag());
+    /*
     zero_leaves(&root);
 
     // Show hover and neighbors
@@ -92,6 +93,7 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
             */
         }
     }
+    */
 
     draw_tree_recursive(ui, &root, rectangle);
 }
@@ -337,7 +339,7 @@ impl InputFunction {
         let width = self.end - self.begin;
         Self {
             begin: self.begin,
-            end: self.end - width,
+            end: self.end - width / 2.0,
             f: self.f.clone(),
             level: self.level + 1,
         }
