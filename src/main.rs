@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, os::unix::process::parent_id, rc::Rc};
 
 use eframe::egui::{CentralPanel, Color32, Frame, Pos2, Rect, Scene, Sense, Stroke, Ui, Vec2};
 use rand::Rng;
@@ -27,6 +27,7 @@ type NodeRef = Rc<RefCell<Node>>;
 struct Node {
     parent: Option<NodeRef>,
     content: NodeContent,
+    level: usize,
 }
 
 #[derive(Clone)]
@@ -37,6 +38,7 @@ enum NodeContent {
 
 fn random_tree(p: f64, parent: Option<NodeRef>) -> NodeRef {
     let new_node = Rc::new(RefCell::new(Node {
+        level: parent.as_ref().map(|p| p.borrow().level + 1).unwrap_or(0),
         parent,
         content: NodeContent::Leaf(rand::thread_rng().r#gen()),
     }));
@@ -73,6 +75,7 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
                 //eprintln!("END NEIGHBOR");
             }
 
+            /*
             if resp.clicked() || resp.dragged() {
                 let parent = found.clone();
                 found.borrow_mut().content = NodeContent::Branch([(); 4].map(|_| {
@@ -82,6 +85,7 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
                     }))
                 }));
             }
+            */
         }
     }
 
@@ -293,4 +297,144 @@ impl From<usize> for Quadrant {
             _ => panic!("Incorrect quadrant index"),
         }
     }
+}
+
+type UserFunc = Rc<dyn Fn(f32) -> f32>;
+
+#[derive(Clone)]
+struct InputFunction {
+    begin: f32,
+    end: f32,
+    f: UserFunc,
+    level: usize,
+}
+
+impl InputFunction {
+    fn from_func(f: UserFunc) -> Self {
+        Self {
+            begin: 0.0,
+            end: 1.0,
+            f,
+            level: 0,
+        }
+    }
+
+    fn right(&self) -> Self {
+        let width = self.end - self.begin;
+        Self {
+            begin: self.begin + width / 2.0,
+            end: self.end,
+            f: self.f.clone(),
+            level: self.level + 1,
+        }
+    }
+
+    fn left(&self) -> Self {
+        let width = self.end - self.begin;
+        Self {
+            begin: self.begin,
+            end: self.end - width,
+            f: self.f.clone(),
+            level: self.level + 1,
+        }
+    }
+
+    fn call(&self, x: f32) -> f32 {
+        (&self.f)(x)
+    }
+}
+
+fn refine_cell(node: NodeRef, input_function: InputFunction) {
+    let level = node.borrow().level;
+    let NodeContent::Leaf(parent_value) = node.borrow().content.clone() else {
+        panic!("Cannot refine branch")
+    };
+
+    let mut has_neighbor = false;
+
+    find_neighbors(&node, Edge::Bottom, &mut |_| {
+        has_neighbor = true;
+    });
+
+    let value = if has_neighbor {
+        parent_value
+    } else {
+        // Average value of the function
+        let resolution = 2;
+        crappy_integral(
+            level + resolution,
+            input_function.begin,
+            input_function.end,
+            |x| input_function.call(x),
+        ) * 2_f32.powi(-(resolution as i32))
+    };
+
+    let branches = [(); 4].map(|_| Rc::new(RefCell::new(Node {
+        parent: Some(node.clone()),
+        level: level + 1,
+        content: NodeContent::Leaf(value),
+    })));
+
+    node.borrow_mut().content = NodeContent::Branch(branches);
+}
+
+fn insert_function(
+    tree: NodeRef,
+    max_residual_times_area: f32,
+    max_level: usize,
+    f: impl Fn(f32) -> f32,
+) {
+}
+
+fn insert_function_rec(
+    tree: NodeRef,
+    max_residual_times_area: f32,
+    max_level: usize,
+    f: InputFunction,
+) {
+    // Can't go deeper than max level
+    let level = tree.borrow().level;
+    if level >= max_level {
+        return;
+    }
+
+    match tree.borrow().content.clone() {
+        NodeContent::Leaf(value) => {
+            // Four steps
+            let residual =
+                crappy_integral(f.level + 2, f.begin, f.end, |x| (value - f.call(x)).abs());
+
+            let area = 2_f32.powi(-2 * level as i32);
+            if residual * area > max_residual_times_area {
+                refine_cell(tree.clone(), f.clone());
+                insert_function_rec(tree.clone(), max_residual_times_area, max_level, f);
+            }
+        }
+        // Only insert on the bottom (least time) branches
+        NodeContent::Branch(branches) => {
+            insert_function_rec(
+                branches[Quadrant::BotLeft as usize].clone(),
+                max_residual_times_area,
+                max_level,
+                f.left(),
+            );
+            insert_function_rec(
+                branches[Quadrant::BotRight as usize].clone(),
+                max_residual_times_area,
+                max_level,
+                f.right(),
+            );
+        }
+    }
+}
+
+fn crappy_integral(max_level: usize, begin: f32, end: f32, f: impl Fn(f32) -> f32) -> f32 {
+    let step_size = 1.0 / max_level as f32;
+    let mut x = begin;
+    let mut sum = 0.0;
+    while x < end {
+        sum += f(x) * step_size;
+        x += step_size;
+    }
+    sum
 }
