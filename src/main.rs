@@ -6,6 +6,10 @@ use rand::Rng;
 fn main() {
     let mut tree = random_tree(0.0, None);
 
+    let f = |x: f32| dbg!(x).cos() * 100.0;
+    let f = InputFunction::from_func(Rc::new(f));
+    insert_function_rec(tree.clone(), 1.0, 10, f);
+
     let mut scene_rect = Rect::ZERO;
     eframe::run_simple_native("tree test", Default::default(), move |ctx, _frame| {
         CentralPanel::default().show(ctx, |ui| {
@@ -378,14 +382,6 @@ fn refine_cell(node: NodeRef, input_function: InputFunction) {
     node.borrow_mut().content = NodeContent::Branch(branches);
 }
 
-fn insert_function(
-    tree: NodeRef,
-    max_residual_times_area: f32,
-    max_level: usize,
-    f: impl Fn(f32) -> f32,
-) {
-}
-
 fn insert_function_rec(
     tree: NodeRef,
     max_residual_times_area: f32,
@@ -398,7 +394,8 @@ fn insert_function_rec(
         return;
     }
 
-    match tree.borrow().content.clone() {
+    let content = tree.borrow().content.clone();
+    match content {
         NodeContent::Leaf(value) => {
             // Four steps
             let residual =
