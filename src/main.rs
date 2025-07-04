@@ -1,6 +1,6 @@
 use std::{cell::RefCell, os::unix::process::parent_id, rc::Rc};
 
-use eframe::egui::{CentralPanel, Color32, Frame, Pos2, Rect, Scene, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{CentralPanel, Color32, DragValue, Frame, Pos2, Rect, Scene, Sense, SidePanel, Stroke, Ui, Vec2};
 use rand::Rng;
 
 fn main() {
@@ -10,14 +10,20 @@ fn main() {
     let f = InputFunction::from_func(Rc::new(f));
     insert_function_rec(tree.clone(), 1e-2, 20, f.clone());
 
+    let mut sample_y = 1.0;
+
     let mut scene_rect = Rect::ZERO;
     eframe::run_simple_native("tree test", Default::default(), move |ctx, _frame| {
+        SidePanel::left("leeft").show(ctx, |ui| {
+            ui.add(DragValue::new(&mut sample_y).range(0.0..=1.0).speed(1e-2));
+        });
+
         CentralPanel::default().show(ctx, |ui| {
             Frame::canvas(ui.style()).show(ui, |ui| {
                 Scene::new()
                     .zoom_range(0.0..=100.0)
                     .show(ui, &mut scene_rect, |ui| {
-                        draw_tree(ui, tree.clone());
+                        draw_tree(ui, tree.clone(), sample_y);
                     });
             });
         });
@@ -56,8 +62,8 @@ fn random_tree(p: f64, parent: Option<NodeRef>) -> NodeRef {
     new_node
 }
 
-fn draw_tree(ui: &mut Ui, root: NodeRef) {
-    let (rectangle, resp) = ui.allocate_exact_size(Vec2::splat(500.0), Sense::click_and_drag());
+fn draw_tree(ui: &mut Ui, root: NodeRef, sample_y: f32) {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(500.0), Sense::click_and_drag());
     /*
     zero_leaves(&root);
 
@@ -95,7 +101,10 @@ fn draw_tree(ui: &mut Ui, root: NodeRef) {
     }
     */
 
-    draw_tree_recursive(ui, &root, rectangle);
+    draw_tree_recursive(ui, &root, rect);
+
+    ui.painter().line_segment([Pos2::new(0.0, sample_y), Pos2::new(1.0, sample_y)], Stroke::new(1.0, Color32::LIGHT_GRAY));
+    draw_func_at_y(&root, ui, rect, sample_y, rect.max.y + 100.0, 90.0);
 }
 
 fn draw_tree_recursive(ui: &mut Ui, node: &NodeRef, rect: Rect) {
@@ -455,4 +464,40 @@ fn sample_max(level: usize, begin: f32, end: f32, f: impl Fn(f32) -> f32) -> f32
         x += step_size;
     }
     max
+}
+
+/// Calls f(min x, max x, value)
+fn sample_grid_at_y(root: NodeRef, y: f32, f: &impl Fn(f32, f32, f32)) {
+    sample_grid_at_y_rec(root, y, Rect::from_min_max(Pos2::ZERO, Pos2::new(1., 1.)), f);
+}
+
+fn sample_grid_at_y_rec(node: NodeRef, y: f32, rect: Rect, f: &impl Fn(f32, f32, f32)) {
+    let content = node.borrow().content.clone();
+    match content {
+        NodeContent::Leaf(value) => {
+            f(rect.min.x, rect.max.x, value)
+        },
+        NodeContent::Branch(branches) => {
+            let (lefts, rights) = rect.split_left_right_at_fraction(0.5);
+            let (top_left, bottom_left) = lefts.split_top_bottom_at_fraction(0.5);
+            let (top_right, bottom_right) = rights.split_top_bottom_at_fraction(0.5);
+            let rects = [top_left, top_right, bottom_left, bottom_right];
+
+            for (branch, rect) in branches.into_iter().zip(rects) {
+                if y <= rect.max.y && y > rect.min.y {
+                    sample_grid_at_y_rec(branch, y, rect, f);
+                }
+            }
+        }
+    }
+}
+
+fn draw_func_at_y(tree: &NodeRef, ui: &mut Ui, disp_rect: Rect, y: f32, y_offset: f32, amplitude: f32) {
+    sample_grid_at_y(tree.clone(), y, &|min_x, max_x, value| {
+        ui.painter().line_segment([
+            Pos2::new(disp_rect.min.lerp(disp_rect.max, min_x).x, value * amplitude + y_offset), 
+            Pos2::new(disp_rect.min.lerp(disp_rect.max, max_x).x, value * amplitude + y_offset), 
+        ], Stroke::new(1.0, Color32::GREEN));
+    });
+    ui.painter().line_segment([Pos2::new(disp_rect.min.x, y_offset), Pos2::new(disp_rect.max.x, y_offset)], Stroke::new(1.0, Color32::LIGHT_GRAY));
 }
