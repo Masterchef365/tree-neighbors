@@ -3,19 +3,33 @@ use std::{cell::RefCell, os::unix::process::parent_id, rc::Rc};
 use eframe::egui::{CentralPanel, Color32, DragValue, Frame, Pos2, Rect, Scene, Sense, SidePanel, Stroke, Ui, Vec2};
 use rand::Rng;
 
-fn main() {
+fn gen_tree(resolution: f32) -> NodeRef {
     let mut tree = random_tree(0.0, None);
 
     let f = |x: f32| (x * 10.0).cos();
     let f = InputFunction::from_func(Rc::new(f));
-    insert_function_rec(tree.clone(), 1e-2, 20, f.clone());
+    insert_function_rec(tree.clone(), resolution, 20, f.clone());
+    tree
+}
 
+fn main() {
+    let mut resolution: f32 = -7.0;
+    let mut tree = gen_tree(resolution.exp());
+    
     let mut sample_y = 1.0;
 
     let mut scene_rect = Rect::ZERO;
     eframe::run_simple_native("tree test", Default::default(), move |ctx, _frame| {
         SidePanel::left("leeft").show(ctx, |ui| {
+            ui.label("Sample y: ");
             ui.add(DragValue::new(&mut sample_y).range(0.0..=1.0).speed(1e-2));
+
+            ui.label("Resolution: ");
+            let resp = ui.add(DragValue::new(&mut resolution).speed(1e-1));
+            if resp.changed() {
+                tree = gen_tree(dbg!(resolution.exp()));
+                dbg!(tree.as_ptr());
+            }
         });
 
         CentralPanel::default().show(ctx, |ui| {
