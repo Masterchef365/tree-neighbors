@@ -431,7 +431,7 @@ fn insert_function_rec(
             let residual =
                 sample_max(f.level + 5, f.begin, f.end, |x| (value - f.call(x)).abs());
 
-            let area = 1.0;//2_f32.powi(-2 * level as i32);
+            let area = 2_f32.powi(-(level as i32));
             if residual * area > max_residual_times_area {
             //if true {
                 refine_cell(tree.clone(), f.clone());
