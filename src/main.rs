@@ -1,10 +1,11 @@
-use std::{cell::RefCell, os::unix::process::parent_id, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
-use eframe::egui::{CentralPanel, Color32, DragValue, Frame, Pos2, Rect, Scene, Sense, SidePanel, Stroke, Ui, Vec2};
-use rand::Rng;
+use eframe::egui::{
+    CentralPanel, Color32, DragValue, Frame, Pos2, Rect, Scene, Sense, SidePanel, Stroke, Ui, Vec2,
+};
 
 fn gen_tree(resolution: f32) -> NodeRef {
-    let mut tree = random_tree(0.0, None);
+    let tree = new_root();
 
     let f = |x: f32| (1.0 - 4.0 * (x - 0.5).powi(2)).sqrt();
     let f = InputFunction::from_func(Rc::new(f));
@@ -15,7 +16,7 @@ fn gen_tree(resolution: f32) -> NodeRef {
 fn main() {
     let mut resolution: f32 = -7.0;
     let mut tree = gen_tree(resolution.exp());
-    
+
     let mut sample_y = 1.0;
 
     let mut scene_rect = Rect::ZERO;
@@ -47,6 +48,14 @@ fn main() {
 
 type NodeRef = Rc<RefCell<Node>>;
 
+fn new_root() -> NodeRef {
+    Rc::new(RefCell::new(Node {
+        level: 0,
+        parent: None,
+        content: NodeContent::Leaf(0.0),
+    }))
+}
+
 #[derive(Clone)]
 struct Node {
     parent: Option<NodeRef>,
@@ -60,6 +69,7 @@ enum NodeContent {
     Leaf(f32),
 }
 
+/*
 fn random_tree(p: f64, parent: Option<NodeRef>) -> NodeRef {
     let new_node = Rc::new(RefCell::new(Node {
         level: parent.as_ref().map(|p| p.borrow().level + 1).unwrap_or(0),
@@ -75,6 +85,7 @@ fn random_tree(p: f64, parent: Option<NodeRef>) -> NodeRef {
 
     new_node
 }
+*/
 
 fn draw_tree(ui: &mut Ui, root: NodeRef, sample_y: f32) {
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(500.0), Sense::click_and_drag());
@@ -117,7 +128,10 @@ fn draw_tree(ui: &mut Ui, root: NodeRef, sample_y: f32) {
 
     draw_tree_recursive(ui, &root, rect);
 
-    ui.painter().line_segment([Pos2::new(0.0, sample_y), Pos2::new(1.0, sample_y)], Stroke::new(1.0, Color32::LIGHT_GRAY));
+    ui.painter().line_segment(
+        [Pos2::new(0.0, sample_y), Pos2::new(1.0, sample_y)],
+        Stroke::new(1.0, Color32::LIGHT_GRAY),
+    );
     draw_func_at_y(&root, ui, rect, sample_y, rect.max.y + 100.0, 90.0);
 }
 
@@ -400,14 +414,16 @@ fn refine_cell(node: NodeRef, input_function: InputFunction) {
             input_function.begin,
             input_function.end,
             |x| input_function.call(x),
-        )// * 2_f32.powi(-(resolution as i32))
+        ) // * 2_f32.powi(-(resolution as i32))
     };
 
-    let branches = [(); 4].map(|_| Rc::new(RefCell::new(Node {
-        parent: Some(node.clone()),
-        level: level + 1,
-        content: NodeContent::Leaf(value),
-    })));
+    let branches = [(); 4].map(|_| {
+        Rc::new(RefCell::new(Node {
+            parent: Some(node.clone()),
+            level: level + 1,
+            content: NodeContent::Leaf(value),
+        }))
+    });
 
     node.borrow_mut().content = NodeContent::Branch(branches);
 }
@@ -428,8 +444,7 @@ fn insert_function_rec(
     match content {
         NodeContent::Leaf(value) => {
             // Four steps
-            let residual =
-                sample_max(f.level + 5, f.begin, f.end, |x| (value - f.call(x)).abs());
+            let residual = sample_max(f.level + 5, f.begin, f.end, |x| (value - f.call(x)).abs());
 
             let area = 2_f32.powi(-(level as i32));
             if residual * area > max_residual_times_area {
@@ -485,15 +500,18 @@ fn sample_max(level: usize, begin: f32, end: f32, f: impl Fn(f32) -> f32) -> f32
 
 /// Calls f(min x, max x, value)
 fn sample_grid_at_y(root: NodeRef, y: f32, f: &impl Fn(f32, f32, f32)) {
-    sample_grid_at_y_rec(root, y, Rect::from_min_max(Pos2::ZERO, Pos2::new(1., 1.)), f);
+    sample_grid_at_y_rec(
+        root,
+        y,
+        Rect::from_min_max(Pos2::ZERO, Pos2::new(1., 1.)),
+        f,
+    );
 }
 
 fn sample_grid_at_y_rec(node: NodeRef, y: f32, rect: Rect, f: &impl Fn(f32, f32, f32)) {
     let content = node.borrow().content.clone();
     match content {
-        NodeContent::Leaf(value) => {
-            f(rect.min.x, rect.max.x, value)
-        },
+        NodeContent::Leaf(value) => f(rect.min.x, rect.max.x, value),
         NodeContent::Branch(branches) => {
             let (lefts, rights) = rect.split_left_right_at_fraction(0.5);
             let (top_left, bottom_left) = lefts.split_top_bottom_at_fraction(0.5);
@@ -509,12 +527,34 @@ fn sample_grid_at_y_rec(node: NodeRef, y: f32, rect: Rect, f: &impl Fn(f32, f32,
     }
 }
 
-fn draw_func_at_y(tree: &NodeRef, ui: &mut Ui, disp_rect: Rect, y: f32, y_offset: f32, amplitude: f32) {
+fn draw_func_at_y(
+    tree: &NodeRef,
+    ui: &mut Ui,
+    disp_rect: Rect,
+    y: f32,
+    y_offset: f32,
+    amplitude: f32,
+) {
     sample_grid_at_y(tree.clone(), y, &|min_x, max_x, value| {
-        ui.painter().line_segment([
-            Pos2::new(disp_rect.min.lerp(disp_rect.max, min_x).x, -value * amplitude + y_offset), 
-            Pos2::new(disp_rect.min.lerp(disp_rect.max, max_x).x, -value * amplitude + y_offset), 
-        ], Stroke::new(1.0, Color32::GREEN));
+        ui.painter().line_segment(
+            [
+                Pos2::new(
+                    disp_rect.min.lerp(disp_rect.max, min_x).x,
+                    -value * amplitude + y_offset,
+                ),
+                Pos2::new(
+                    disp_rect.min.lerp(disp_rect.max, max_x).x,
+                    -value * amplitude + y_offset,
+                ),
+            ],
+            Stroke::new(1.0, Color32::GREEN),
+        );
     });
-    ui.painter().line_segment([Pos2::new(disp_rect.min.x, y_offset), Pos2::new(disp_rect.max.x, y_offset)], Stroke::new(1.0, Color32::LIGHT_GRAY));
+    ui.painter().line_segment(
+        [
+            Pos2::new(disp_rect.min.x, y_offset),
+            Pos2::new(disp_rect.max.x, y_offset),
+        ],
+        Stroke::new(1.0, Color32::LIGHT_GRAY),
+    );
 }
