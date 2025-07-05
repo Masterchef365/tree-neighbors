@@ -214,6 +214,8 @@ enum Edge {
 }
 
 impl Edge {
+    const ALL: [Self; 4] = [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right];
+
     fn neighbor_quadrants(&self) -> [Quadrant; 2] {
         match self {
             Edge::Top => [Quadrant::BotLeft, Quadrant::BotRight],
@@ -565,29 +567,45 @@ fn draw_func_at_y(
 }
 
 fn solve(tree: &NodeRef<f32>) {
-    let idx_tree = build_index_tree(tree);
+    let idx_tree = build_sim_tree(tree);
     let values = gather(&tree);
     let matrix = build_matrix(&idx_tree, &values)
 }
 
-#[derive(Clone)]
-enum IndexValue {
-    Constant(f32),
-    Parameter(usize),
+#[derive(Clone, Default)]
+struct SimVariable {
+    idx: usize,
+    constant: Option<f32>,
 }
 
-fn build_index_tree(tree: &NodeRef<f32>) -> NodeRef<IndexValue> {
-    build_index_tree_rec(tree, &mut 0, None)
+impl SimVariable {
+    fn parameter(idx: usize) -> Self {
+        Self {
+            idx,
+            constant: None,
+        }
+    }
+
+    fn constant(idx: usize, value: f32) -> Self {
+        Self {
+            idx,
+            constant: Some(value),
+        }
+    }
 }
 
-fn build_index_tree_rec(
+fn build_sim_tree(tree: &NodeRef<f32>) -> NodeRef<SimVariable> {
+    build_sim_tree_rec(tree, &mut 0, None)
+}
+
+fn build_sim_tree_rec(
     tree: &NodeRef<f32>,
     next_idx: &mut usize,
-    parent: Option<NodeRef<IndexValue>>,
-) -> NodeRef<IndexValue> {
+    parent: Option<NodeRef<SimVariable>>,
+) -> NodeRef<SimVariable> {
     let idx_tree = Rc::new(RefCell::new(Node {
         level: parent.as_ref().map(|p| p.borrow().level + 1).unwrap_or(0),
-        content: NodeContent::Leaf(IndexValue::Constant(0.0)),
+        content: NodeContent::Leaf(SimVariable::default()),
         parent,
     }));
 
@@ -595,16 +613,17 @@ fn build_index_tree_rec(
         NodeContent::Branch(branches) => {
             let idx_tree_branches = branches
                 .clone()
-                .map(|branch| build_index_tree_rec(&branch, next_idx, Some(idx_tree.clone())));
+                .map(|branch| build_sim_tree_rec(&branch, next_idx, Some(idx_tree.clone())));
             idx_tree.borrow_mut().content = NodeContent::Branch(idx_tree_branches);
         },
         NodeContent::Leaf(value) => {
+            let idx = *next_idx;
+            *next_idx += 1;
+
             let value = if is_boundary_cell(&tree) {
-                IndexValue::Constant(*value)
+                SimVariable::constant(idx, *value)
             } else {
-                let ret = IndexValue::Parameter(*next_idx);
-                *next_idx += 1;
-                ret
+                SimVariable::parameter(idx)
             };
 
             idx_tree.borrow_mut().content = NodeContent::Leaf(value);
@@ -624,18 +643,32 @@ fn is_boundary_cell<T: Copy>(node: &NodeRef<T>) -> bool {
     has_neighbor
 }
 
-fn build_matrix(tree: &NodeRef<usize>, values: &[f32]) -> Trpl<f32> {
-    match &tree.borrow().content {
-        NodeContent::Leaf(idx) => {
-            if is_boundary_cell(&tree) {
-            } else {
-            }
-        }
-    }
+fn build_matrix(tree: &NodeRef<SimVariable>) -> Trpl<f32> {
+    // Our matrix is A in Ax = b, naturally.
+    // So this vector contains the boundary conditions OR zero if unconstrained free space.
+    let mut b = vec![];
+
+    let mut matrix = Trpl::<f32>::new();
+    build_matrix_rec(tree, &mut matrix, &mut b);
 }
 
-fn build_matrix_rec(tree: &NodeRef<f32>) -> Trpl<f32> {
-    todo!()
+fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut Vec<f32>)  {
+    match &tree.borrow().content {
+        NodeContent::Leaf(var) => {
+            if let Some(constant) = var.constant {
+                b.push(constant);
+                matrix.append(var.idx, var.idx, 1.0);
+            } else {
+                b.push(0.0);
+                for edge in Edge::ALL {
+                    find_neighbors(tree, edge, &|neighbor| {
+                        let NodeContent::Leaf(neigh_var) = neighbor.borrow().content else { unreachable!() };
+                        matrix.append(var.idx, neigh_var.idx, -1.0);
+                    });
+                }
+            }
+        },
+    }
 }
 
 fn gather(tree: &NodeRef<f32>) -> Vec<f32> {
