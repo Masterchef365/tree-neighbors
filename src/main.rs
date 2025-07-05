@@ -3,8 +3,9 @@ use std::{cell::RefCell, rc::Rc};
 use eframe::egui::{
     CentralPanel, Color32, DragValue, Frame, Pos2, Rect, Scene, Sense, SidePanel, Stroke, Ui, Vec2,
 };
+use rsparse::data::Trpl;
 
-fn gen_tree(resolution: f32) -> NodeRef {
+fn gen_tree(resolution: f32) -> NodeRef<f32> {
     let tree = new_root();
 
     let f = |x: f32| (1.0 - 4.0 * (x - 0.5).powi(2)).sqrt();
@@ -46,9 +47,9 @@ fn main() {
     .unwrap();
 }
 
-type NodeRef = Rc<RefCell<Node>>;
+type NodeRef<T> = Rc<RefCell<Node<T>>>;
 
-fn new_root() -> NodeRef {
+fn new_root() -> NodeRef<f32> {
     Rc::new(RefCell::new(Node {
         level: 0,
         parent: None,
@@ -57,20 +58,20 @@ fn new_root() -> NodeRef {
 }
 
 #[derive(Clone)]
-struct Node {
-    parent: Option<NodeRef>,
-    content: NodeContent,
+struct Node<T> {
+    parent: Option<NodeRef<T>>,
+    content: NodeContent<T>,
     level: usize,
 }
 
 #[derive(Clone)]
-enum NodeContent {
-    Branch([NodeRef; 4]),
-    Leaf(f32),
+enum NodeContent<T> {
+    Branch([NodeRef<T>; 4]),
+    Leaf(T),
 }
 
 /*
-fn random_tree(p: f64, parent: Option<NodeRef>) -> NodeRef {
+fn random_tree(p: f64, parent: Option<NodeRef<f32>>) -> NodeRef<f32> {
     let new_node = Rc::new(RefCell::new(Node {
         level: parent.as_ref().map(|p| p.borrow().level + 1).unwrap_or(0),
         parent,
@@ -87,7 +88,7 @@ fn random_tree(p: f64, parent: Option<NodeRef>) -> NodeRef {
 }
 */
 
-fn draw_tree(ui: &mut Ui, root: NodeRef, sample_y: f32) {
+fn draw_tree(ui: &mut Ui, root: NodeRef<f32>, sample_y: f32) {
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(500.0), Sense::click_and_drag());
     /*
     zero_leaves(&root);
@@ -135,7 +136,7 @@ fn draw_tree(ui: &mut Ui, root: NodeRef, sample_y: f32) {
     draw_func_at_y(&root, ui, rect, sample_y, rect.max.y + 100.0, 90.0);
 }
 
-fn draw_tree_recursive(ui: &mut Ui, node: &NodeRef, rect: Rect) {
+fn draw_tree_recursive(ui: &mut Ui, node: &NodeRef<f32>, rect: Rect) {
     match &node.borrow().content {
         NodeContent::Leaf(value) => {
             let fill = if *value > 0.0 {
@@ -161,7 +162,7 @@ fn draw_tree_recursive(ui: &mut Ui, node: &NodeRef, rect: Rect) {
     }
 }
 
-fn find_node_recursive(pos: Pos2, node: NodeRef, rect: Rect) -> Option<NodeRef> {
+fn find_node_recursive(pos: Pos2, node: NodeRef<f32>, rect: Rect) -> Option<NodeRef<f32>> {
     match &node.borrow().content {
         NodeContent::Leaf(_) => rect.contains(pos).then(|| node.clone()),
         NodeContent::Branch(branches) => {
@@ -183,7 +184,7 @@ fn find_node_recursive(pos: Pos2, node: NodeRef, rect: Rect) -> Option<NodeRef> 
     }
 }
 
-fn zero_leaves(node: &NodeRef) {
+fn zero_leaves(node: &NodeRef<f32>) {
     match &mut node.borrow_mut().content {
         NodeContent::Leaf(value) => *value = 0.0,
         NodeContent::Branch(branches) => {
@@ -290,13 +291,13 @@ macro_rules! debug_borrow {
 }
 */
 
-fn find_neighbors(node: &NodeRef, edge: Edge, callback: &mut impl FnMut(&NodeRef)) {
+fn find_neighbors<T: Copy>(node: &NodeRef<T>, edge: Edge, callback: &mut impl FnMut(&NodeRef<T>)) {
     if let Some(root_neighbor) = find_neighbor_up(node, edge) {
         find_neighbors_down(&root_neighbor, edge, callback);
     }
 }
 
-fn find_neighbor_up(node: &NodeRef, edge: Edge) -> Option<NodeRef> {
+fn find_neighbor_up<T: Copy>(node: &NodeRef<T>, edge: Edge) -> Option<NodeRef<T>> {
     let Some(parent) = node.borrow().parent.clone() else {
         // root has no neighbors
         return None;
@@ -323,7 +324,11 @@ fn find_neighbor_up(node: &NodeRef, edge: Edge) -> Option<NodeRef> {
     }
 }
 
-fn find_neighbors_down(node: &NodeRef, edge: Edge, callback: &mut impl FnMut(&NodeRef)) {
+fn find_neighbors_down<T: Copy>(
+    node: &NodeRef<T>,
+    edge: Edge,
+    callback: &mut impl FnMut(&NodeRef<T>),
+) {
     let content = node.borrow().content.clone();
     match content {
         NodeContent::Leaf(_) => callback(&node),
@@ -392,7 +397,7 @@ impl InputFunction {
     }
 }
 
-fn refine_cell(node: NodeRef, input_function: InputFunction) {
+fn refine_cell(node: NodeRef<f32>, input_function: InputFunction) {
     let level = node.borrow().level;
     let NodeContent::Leaf(parent_value) = node.borrow().content.clone() else {
         panic!("Cannot refine branch")
@@ -429,7 +434,7 @@ fn refine_cell(node: NodeRef, input_function: InputFunction) {
 }
 
 fn insert_function_rec(
-    tree: NodeRef,
+    tree: NodeRef<f32>,
     max_residual_times_area: f32,
     max_level: usize,
     f: InputFunction,
@@ -499,7 +504,7 @@ fn sample_max(level: usize, begin: f32, end: f32, f: impl Fn(f32) -> f32) -> f32
 }
 
 /// Calls f(min x, max x, value)
-fn sample_grid_at_y(root: NodeRef, y: f32, f: &impl Fn(f32, f32, f32)) {
+fn sample_grid_at_y(root: NodeRef<f32>, y: f32, f: &impl Fn(f32, f32, f32)) {
     sample_grid_at_y_rec(
         root,
         y,
@@ -508,7 +513,7 @@ fn sample_grid_at_y(root: NodeRef, y: f32, f: &impl Fn(f32, f32, f32)) {
     );
 }
 
-fn sample_grid_at_y_rec(node: NodeRef, y: f32, rect: Rect, f: &impl Fn(f32, f32, f32)) {
+fn sample_grid_at_y_rec(node: NodeRef<f32>, y: f32, rect: Rect, f: &impl Fn(f32, f32, f32)) {
     let content = node.borrow().content.clone();
     match content {
         NodeContent::Leaf(value) => f(rect.min.x, rect.max.x, value),
@@ -528,7 +533,7 @@ fn sample_grid_at_y_rec(node: NodeRef, y: f32, rect: Rect, f: &impl Fn(f32, f32,
 }
 
 fn draw_func_at_y(
-    tree: &NodeRef,
+    tree: &NodeRef<f32>,
     ui: &mut Ui,
     disp_rect: Rect,
     y: f32,
@@ -557,4 +562,111 @@ fn draw_func_at_y(
         ],
         Stroke::new(1.0, Color32::LIGHT_GRAY),
     );
+}
+
+fn solve(tree: &NodeRef<f32>) {
+    let idx_tree = build_index_tree(tree);
+    let values = gather(&tree);
+    let matrix = build_matrix(&idx_tree, &values)
+}
+
+#[derive(Clone)]
+enum IndexValue {
+    Constant(f32),
+    Parameter(usize),
+}
+
+fn build_index_tree(tree: &NodeRef<f32>) -> NodeRef<IndexValue> {
+    build_index_tree_rec(tree, &mut 0, None)
+}
+
+fn build_index_tree_rec(
+    tree: &NodeRef<f32>,
+    next_idx: &mut usize,
+    parent: Option<NodeRef<IndexValue>>,
+) -> NodeRef<IndexValue> {
+    let idx_tree = Rc::new(RefCell::new(Node {
+        level: parent.as_ref().map(|p| p.borrow().level + 1).unwrap_or(0),
+        content: NodeContent::Leaf(IndexValue::Constant(0.0)),
+        parent,
+    }));
+
+    match &tree.borrow().content {
+        NodeContent::Branch(branches) => {
+            let idx_tree_branches = branches
+                .clone()
+                .map(|branch| build_index_tree_rec(&branch, next_idx, Some(idx_tree.clone())));
+            idx_tree.borrow_mut().content = NodeContent::Branch(idx_tree_branches);
+        },
+        NodeContent::Leaf(value) => {
+            let value = if is_boundary_cell(&tree) {
+                IndexValue::Constant(*value)
+            } else {
+                let ret = IndexValue::Parameter(*next_idx);
+                *next_idx += 1;
+                ret
+            };
+
+            idx_tree.borrow_mut().content = NodeContent::Leaf(value);
+        }
+    }
+
+    idx_tree
+}
+
+fn is_boundary_cell<T: Copy>(node: &NodeRef<T>) -> bool {
+    let mut has_neighbor = false;
+
+    find_neighbors(&node, Edge::Bottom, &mut |_| {
+        has_neighbor = true;
+    });
+
+    has_neighbor
+}
+
+fn build_matrix(tree: &NodeRef<usize>, values: &[f32]) -> Trpl<f32> {
+    match &tree.borrow().content {
+        NodeContent::Leaf(idx) => {
+            if is_boundary_cell(&tree) {
+            } else {
+            }
+        }
+    }
+}
+
+fn build_matrix_rec(tree: &NodeRef<f32>) -> Trpl<f32> {
+    todo!()
+}
+
+fn gather(tree: &NodeRef<f32>) -> Vec<f32> {
+    let mut out = vec![];
+    gather_rec(tree, &mut out);
+    out
+}
+
+fn gather_rec(tree: &NodeRef<f32>, values: &mut Vec<f32>) {
+    match &tree.borrow().content {
+        NodeContent::Leaf(value) => values.push(*value),
+        NodeContent::Branch(branches) => branches
+            .iter()
+            .for_each(|branch| gather_rec(branch, values)),
+    }
+}
+
+fn scatter(tree: &NodeRef<f32>, values: &[f32]) {
+    scatter_rec(tree, values, &mut 0);
+}
+
+fn scatter_rec(tree: &NodeRef<f32>, values: &[f32], next_index: &mut usize) {
+    match &mut tree.borrow_mut().content {
+        NodeContent::Leaf(value) => {
+            *value = values[*next_index];
+            *next_index += 1;
+        }
+        NodeContent::Branch(branches) => {
+            for branch in branches {
+                scatter_rec(branch, values, next_index);
+            }
+        }
+    }
 }
