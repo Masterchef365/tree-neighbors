@@ -29,8 +29,7 @@ fn main() {
             ui.label("Resolution: ");
             let resp = ui.add(DragValue::new(&mut resolution).speed(1e-1));
             if resp.changed() {
-                tree = gen_tree(dbg!(resolution.exp()));
-                dbg!(tree.as_ptr());
+                tree = gen_tree(resolution.exp());
             }
 
             if ui.button("SOLVE").clicked() {
@@ -575,8 +574,13 @@ fn solve(tree: &NodeRef<f32>) -> Result<(), rsparse::Error> {
     let (matrix, b) = build_matrix(&idx_tree);
     let matrix = matrix.to_sprs();
     let mut x = b.clone();
-    lusol(&matrix, &mut x, 1, 1e-3)?;
-    scatter(tree, &x);
+    lusol(&matrix, &mut x, 1, 1e-6)?;
+
+    let mut a2 = rsparse::data::Sprs::new_from_vec(&x.iter().copied().map(|x| vec![x]).collect::<Vec<_>>());
+    let residuals = rsparse::multiply(&matrix, &a2);
+    let ret: Vec<f32> = residuals.to_dense().into_iter().flatten().collect();
+
+    scatter(tree, &ret);
 
     Ok(())
 }
