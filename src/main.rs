@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use eframe::egui::{
     CentralPanel, Color32, DragValue, Frame, Pos2, Rect, Scene, Sense, SidePanel, Stroke, Ui, Vec2,
 };
-use rsparse::data::Trpl;
+use rsparse::{data::Trpl, lusol};
 
 fn gen_tree(resolution: f32) -> NodeRef<f32> {
     let tree = new_root();
@@ -31,6 +31,10 @@ fn main() {
             if resp.changed() {
                 tree = gen_tree(dbg!(resolution.exp()));
                 dbg!(tree.as_ptr());
+            }
+
+            if ui.button("SOLVE").clicked() {
+                let _ = dbg!(solve(&tree));
             }
         });
 
@@ -566,13 +570,18 @@ fn draw_func_at_y(
     );
 }
 
-fn solve(tree: &NodeRef<f32>) {
+fn solve(tree: &NodeRef<f32>) -> Result<(), rsparse::Error> {
     let idx_tree = build_sim_tree(tree);
-    let values = gather(&tree);
-    let matrix = build_matrix(&idx_tree, &values)
+    let (matrix, b) = build_matrix(&idx_tree);
+    let matrix = matrix.to_sprs();
+    let mut x = b.clone();
+    lusol(&matrix, &mut x, 1, 1e-3)?;
+    scatter(tree, &x);
+
+    Ok(())
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Copy, Default)]
 struct SimVariable {
     idx: usize,
     constant: Option<f32>,
@@ -643,13 +652,15 @@ fn is_boundary_cell<T: Copy>(node: &NodeRef<T>) -> bool {
     has_neighbor
 }
 
-fn build_matrix(tree: &NodeRef<SimVariable>) -> Trpl<f32> {
+fn build_matrix(tree: &NodeRef<SimVariable>) -> (Trpl<f32>, Vec<f32>) {
     // Our matrix is A in Ax = b, naturally.
     // So this vector contains the boundary conditions OR zero if unconstrained free space.
     let mut b = vec![];
 
     let mut matrix = Trpl::<f32>::new();
     build_matrix_rec(tree, &mut matrix, &mut b);
+
+    (matrix, b)
 }
 
 fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut Vec<f32>)  {
@@ -661,11 +672,21 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
             } else {
                 b.push(0.0);
                 for edge in Edge::ALL {
-                    find_neighbors(tree, edge, &|neighbor| {
+                    find_neighbors(tree, edge, &mut |neighbor| {
                         let NodeContent::Leaf(neigh_var) = neighbor.borrow().content else { unreachable!() };
-                        matrix.append(var.idx, neigh_var.idx, -1.0);
+                        let interface_size = calculate_interface_factor(tree.borrow().level, neighbor.borrow().level);
+
+                        let edge_is_time = matches!(edge, Edge::Top | Edge::Bottom);
+                        let sign = if edge_is_time { 1. } else { -1. };
+
+                        matrix.append(var.idx, neigh_var.idx, sign * interface_size);
                     });
                 }
+            }
+        },
+        NodeContent::Branch(branches) => {
+            for branch in branches {
+                build_matrix_rec(&branch, matrix, b);
             }
         },
     }
@@ -702,4 +723,21 @@ fn scatter_rec(tree: &NodeRef<f32>, values: &[f32], next_index: &mut usize) {
             }
         }
     }
+}
+
+/// Calculates how big the contribution to our total value this immediate neighbor should have,
+/// given the levels of both us and the neighbor. So if they're half the side length as us, this
+/// will be 1/2, but if they're 2x the side length of us, this will return only 1.0 (not 2.0!).
+fn calculate_interface_factor(our_level: usize, neighbor_level: usize) -> f32 {
+    // How big is our side length compared to this neighbor?
+    // Negative when neighbor is finer
+    let relative_level = our_level as f32 - neighbor_level as f32;
+
+    // The surface area of contact can't be larger than our surface area!
+    let relative_level = relative_level.min(0.0);
+
+    // Get the actual size, in units, of the interface between us and our neighbor
+    let interface_size = 2_f32.powf(relative_level);
+
+    interface_size 
 }
