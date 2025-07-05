@@ -666,9 +666,10 @@ fn build_matrix(tree: &NodeRef<SimVariable>) -> (Trpl<f32>, Vec<f32>) {
 fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut Vec<f32>)  {
     match &tree.borrow().content {
         NodeContent::Leaf(var) => {
+            matrix.append(var.idx, var.idx, 4.0);
+
             if let Some(constant) = var.constant {
                 b.push(constant);
-                matrix.append(var.idx, var.idx, 1.0);
             } else {
                 b.push(0.0);
                 for edge in Edge::ALL {
@@ -676,10 +677,10 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
                         let NodeContent::Leaf(neigh_var) = neighbor.borrow().content else { unreachable!() };
                         let interface_size = calculate_interface_factor(tree.borrow().level, neighbor.borrow().level);
 
-                        let edge_is_time = matches!(edge, Edge::Top | Edge::Bottom);
-                        let sign = if edge_is_time { 1. } else { -1. };
+                        //let edge_is_time = matches!(edge, Edge::Top | Edge::Bottom);
+                        //let sign = if edge_is_time { 1. } else { -1. };
 
-                        matrix.append(var.idx, neigh_var.idx, sign * interface_size);
+                        matrix.append(var.idx, neigh_var.idx, -interface_size);
                     });
                 }
             }
