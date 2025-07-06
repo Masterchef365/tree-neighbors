@@ -747,8 +747,13 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
                 b.push(0.0);
 
                 let c2 = (1_f32).powi(2);
-                let dt2 = (2_f32).powi(2);
+                let dt2 = (1_f32).powi(2);
                 let dx2 = (1_f32).powi(2);
+
+                let mut has_top = false;
+                find_neighbors(tree, Edge::Top, &mut |_| {
+                    has_top = true;
+                });
 
                 for edge in Edge::ALL {
                     find_neighbors(tree, edge, &mut |neighbor| {
@@ -768,7 +773,11 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
                     });
                 }
 
-                matrix.append(var.idx, var.idx, 2.0 * (dt2 * c2 - dx2));
+                let mut self_factor = 2.0 * (dt2 * c2 - dx2);
+                if !has_top {
+                    self_factor -= dx2;
+                }
+                matrix.append(var.idx, var.idx, self_factor);
             }
         }
         NodeContent::Branch(branches) => {

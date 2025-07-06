@@ -1,0 +1,40 @@
+\documentclass[12pt]{article}
+\usepackage{physics}
+\usepackage{parskip}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{units}
+\usepackage{circuitikz}
+
+\begin{document}
+
+Finite difference kernel:
+\[ \pderivative{^2u}{p^2} \approx \frac{u_{p-1} - 2u_p + u_{p+1}}{\Delta p^2} \]
+
+1D Wave equation:
+\[ 
+    \pderivative{^2u}{t^2} = c^2 \pderivative{^2u}{x^2}
+\]
+
+\[ 
+    \frac{u_{x, t-1} - 2u_t + u_{x, t+1}}{\Delta t^2} = c^2 \frac{u_{x-1, t} - 2u_x + u_{x+1, t}}{\Delta x^2}
+\]
+
+\[ 
+    0 = \frac{u_{x, t-1} - 2u_t + u_{x, t+1}}{\Delta t^2} - c^2 \frac{u_{x-1, t} - 2u_x + u_{x+1, t}}{\Delta x^2}
+\]
+
+\[ 
+    0 = \Delta x^2 \left(u_{x, t-1} - 2u_t + u_{x, t+1}\right) - \Delta t^2 c^2 \left(u_{x-1, t} - 2u_x + u_{x+1, t}\right)
+\]
+
+\[ 
+    0 = \Delta x^2 \left(u_{x, t-1} + u_{x, t+1}\right) - \Delta t^2 c^2 \left(u_{x-1, t} + u_{x+1, t}\right) + (-2 \Delta x^2 + 2 c^2 \Delta t^2) u_{x, t}
+\]
+
+\[ 
+    0 = \Delta x^2 \left(u_{x, t-1} + u_{x, t+1}\right) - \Delta t^2 c^2 \left(u_{x-1, t} + u_{x+1, t}\right) + 2(c^2 \Delta t^2 - \Delta x^2) u_{x, t}
+\]
+
+
+\end{document}
