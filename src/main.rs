@@ -742,7 +742,7 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
             assert_eq!(var.idx, b.len());
             if let Some(constant) = var.constant {
                 matrix.append(var.idx, var.idx, 1.0);
-                b.push(constant / 10.0);
+                b.push(constant);
             } else {
                 b.push(0.0);
 
