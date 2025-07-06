@@ -767,15 +767,21 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
 
                         let edge_is_time = matches!(edge, Edge::Top | Edge::Bottom);
 
-                        let sign = if edge_is_time { dx2 } else { -dt2 * c2 };
+                        let mut sign = if edge_is_time { dx2 } else { -dt2 * c2 };
+                        if edge == Edge::Bottom && !has_top {
+                            sign *= 2.0;
+                        }
 
                         matrix.append(var.idx, neigh_var.idx, sign * interface_size);
                     });
                 }
 
+                if !has_top {
+                }
+
                 let mut self_factor = 2.0 * (dt2 * c2 - dx2);
                 if !has_top {
-                    self_factor -= dx2;
+                    //self_factor -= dx2;
                 }
                 matrix.append(var.idx, var.idx, self_factor);
             }
