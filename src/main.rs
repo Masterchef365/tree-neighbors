@@ -631,7 +631,7 @@ fn solve(tree: &NodeRef<f32>) -> Result<(), rsparse::Error> {
     let (matrix, b) = build_matrix(&idx_tree);
     let matrix = matrix.to_sprs();
     let mut x = b.clone();
-    //lusol(&matrix, &mut x, 1, 1e-6)?;
+    lusol(&matrix, &mut x, 1, 1e-6)?;
 
     //let x_sprs =
     //rsparse::data::Sprs::new_from_vec(&x.iter().copied().map(|x| vec![x]).collect::<Vec<_>>());
@@ -702,7 +702,6 @@ fn build_sim_tree_rec(
             let value = if is_boundary_cell(&tree) {
                 SimVariable::constant(idx, *value)
             } else {
-                dbg!("param", value);
                 SimVariable::parameter(idx)
             };
 
@@ -756,7 +755,7 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
                         );
 
                         let edge_is_time = matches!(edge, Edge::Top | Edge::Bottom);
-                        let sign = -1.0; //if edge_is_time { 1. } else { -1. };
+                        let sign = if edge_is_time { -1. } else { 1. };
 
                         matrix.append(var.idx, neigh_var.idx, sign * interface_size);
                     });
