@@ -736,10 +736,10 @@ fn build_matrix(tree: &NodeRef<SimVariable>) -> (Trpl<f32>, Vec<f32>) {
 fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut Vec<f32>) {
     match &tree.borrow().content {
         NodeContent::Leaf(var) => {
-            matrix.append(var.idx, var.idx, 4.0);
 
             assert_eq!(var.idx, b.len());
             if let Some(constant) = var.constant {
+                matrix.append(var.idx, var.idx, 1.0);
                 b.push(constant);
             } else {
                 b.push(0.0);
