@@ -16,9 +16,9 @@ fn gen_tree(resolution: f32) -> NodeRef<f32> {
 }
 
 fn main() {
-    let mut resolution: f32 = -7.0;
-    let mut tree = gen_tree(resolution.exp());
-    tree = make_uniform(&tree, RES);
+    let mut resolution: f32 = RES as f32 + 1.0;
+    let mut tree = gen_tree(2_f32.powf(-resolution));
+    //tree = make_uniform(&tree, RES - 2);
 
     let mut sample_y = 1.0;
 
@@ -31,7 +31,7 @@ fn main() {
             ui.label("Resolution: ");
             let resp = ui.add(DragValue::new(&mut resolution).speed(1e-1));
             if resp.changed() {
-                tree = gen_tree(resolution.exp());
+                tree = gen_tree(2_f32.powf(-resolution));
                 tree = make_uniform(&tree, RES);
             }
 
@@ -98,25 +98,30 @@ fn draw_tree(ui: &mut Ui, root: NodeRef<f32>, sample_y: f32) {
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(500.0), Sense::click_and_drag());
     /*
     zero_leaves(&root);
+    */
 
     // Show hover and neighbors
     if let Some(interact) = resp.hover_pos() {
-        if let Some(found) = find_node_recursive(interact, root.clone(), rectangle) {
+        if let Some(found) = find_node_recursive(interact, root.clone(), rect) {
+            /*
             if let NodeContent::Leaf(value) = &mut found.borrow_mut().content {
                 *value = 0.95;
             }
+            */
 
+            /*
             for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
                 //eprintln!("BEGIN NEIGHBOR {edge:?}");
                 find_neighbors(&found, edge, &mut |node| {
                     //eprintln!("MUT");
                     //debug_borrow!(node);
                     if let NodeContent::Leaf(value) = &mut node.borrow_mut().content {
-                        *value = 0.75;
+                        *value = -0.75;
                     }
                 });
                 //eprintln!("END NEIGHBOR");
             }
+            */
 
             /*
             if resp.clicked() || resp.dragged() {
@@ -131,7 +136,6 @@ fn draw_tree(ui: &mut Ui, root: NodeRef<f32>, sample_y: f32) {
             */
         }
     }
-    */
 
     draw_tree_recursive(ui, &root, rect);
 
@@ -577,42 +581,47 @@ fn make_uniform(tree: &NodeRef<f32>, max_level: usize) -> NodeRef<f32> {
 }
 
 fn make_uniform_rec(
-    tree: &NodeRef<f32>,
+    old_tree: &NodeRef<f32>,
     max_level: usize,
     parent: Option<NodeRef<f32>>,
 ) -> NodeRef<f32> {
-    let content = tree.borrow().content.clone();
-    let level = tree.borrow().level;
-    match content {
+    let old_content = old_tree.borrow().content.clone();
+    let level = parent.as_ref().map(|parent| parent.borrow().level + 1).unwrap_or(0);
+
+    match old_content {
         NodeContent::Leaf(value) => {
+            let new_cell = Rc::new(RefCell::new(Node {
+                level,
+                parent: parent.clone(),
+                content: NodeContent::Leaf(value),
+            }));
+
             if level < max_level {
                 let branches = [(); 4].map(|_| {
                     Rc::new(RefCell::new(Node {
-                        level: tree.borrow().level + 1,
-                        parent: Some(tree.clone()),
+                        level: old_tree.borrow().level + 1,
+                        parent: Some(new_cell.clone()),
                         content: NodeContent::Leaf(value),
                     }))
                 });
-                tree.borrow_mut().content = NodeContent::Branch(branches);
 
-                make_uniform(tree, max_level)
+                new_cell.borrow_mut().content = NodeContent::Branch(branches);
+
+                make_uniform_rec(&new_cell, max_level, parent)
             } else {
-                Rc::new(RefCell::new(Node {
-                    level: tree.borrow().level,
-                    parent: parent.clone(),
-                    content: NodeContent::Leaf(value),
-                }))
+                new_cell
             }
         }
         NodeContent::Branch(branches) => {
-            let content = NodeContent::Branch(
-                branches.map(|branch| make_uniform_rec(&branch, max_level, parent.clone())),
-            );
-            Rc::new(RefCell::new(Node {
-                level: tree.borrow().level,
+            let cell = Rc::new(RefCell::new(Node {
+                level: old_tree.borrow().level,
                 parent: parent.clone(),
-                content,
-            }))
+                content: NodeContent::Leaf(Default::default()),
+            }));
+            cell.borrow_mut().content = NodeContent::Branch(
+                branches.map(|branch| make_uniform_rec(&branch, max_level, Some(cell.clone()))),
+            );
+            cell
         }
     }
 }
@@ -693,6 +702,7 @@ fn build_sim_tree_rec(
             let value = if is_boundary_cell(&tree) {
                 SimVariable::constant(idx, *value)
             } else {
+                dbg!("param", value);
                 SimVariable::parameter(idx)
             };
 
@@ -735,7 +745,6 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
             } else {
                 b.push(0.0);
 
-                /*
                 for edge in Edge::ALL {
                     find_neighbors(tree, edge, &mut |neighbor| {
                         let NodeContent::Leaf(neigh_var) = neighbor.borrow().content else {
@@ -752,7 +761,6 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
                         matrix.append(var.idx, neigh_var.idx, sign * interface_size);
                     });
                 }
-                */
             }
         }
         NodeContent::Branch(branches) => {
