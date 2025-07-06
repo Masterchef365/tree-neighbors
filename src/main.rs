@@ -9,7 +9,8 @@ const RES: usize = 7;
 fn gen_tree(resolution: f32) -> NodeRef<f32> {
     let tree = new_root();
 
-    let f = |x: f32| (1.0 - 4.0 * (x - 0.5).powi(2)).sqrt();
+    //let f = |x: f32| (1.0 - 4.0 * (x - 0.5).powi(2)).sqrt();
+    let f = |x: f32| ((x - 0.5).abs() < 0.1) as i32 as f32;
     let f = InputFunction::from_func(Rc::new(f));
     insert_function_rec(tree.clone(), resolution, RES, f.clone());
     tree
@@ -26,7 +27,7 @@ fn main() {
     eframe::run_simple_native("tree test", Default::default(), move |ctx, _frame| {
         SidePanel::left("leeft").show(ctx, |ui| {
             ui.label("Sample y: ");
-            ui.add(DragValue::new(&mut sample_y).range(0.0..=1.0).speed(1e-2));
+            ui.add(DragValue::new(&mut sample_y).range(0.0..=1.0).speed(1e-3));
 
             ui.label("Resolution: ");
             let resp = ui.add(DragValue::new(&mut resolution).speed(1e-1));
@@ -139,8 +140,9 @@ fn draw_tree(ui: &mut Ui, root: NodeRef<f32>, sample_y: f32) {
 
     draw_tree_recursive(ui, &root, rect);
 
+    let y_offset = sample_y * rect.height() + rect.min.y;
     ui.painter().line_segment(
-        [Pos2::new(0.0, sample_y), Pos2::new(1.0, sample_y)],
+        [Pos2::new(rect.min.x, y_offset), Pos2::new(rect.max.x, y_offset)],
         Stroke::new(1.0, Color32::LIGHT_GRAY),
     );
     draw_func_at_y(&root, ui, rect, sample_y, rect.max.y + 100.0, 90.0);
@@ -631,7 +633,7 @@ fn solve(tree: &NodeRef<f32>) -> Result<(), rsparse::Error> {
     let (matrix, b) = build_matrix(&idx_tree);
     let matrix = matrix.to_sprs();
     let mut x = b.clone();
-    lusol(&matrix, &mut x, 1, 1e-6)?;
+    lusol(&matrix, &mut x, 1, 1e-9)?;
 
     //let x_sprs =
     //rsparse::data::Sprs::new_from_vec(&x.iter().copied().map(|x| vec![x]).collect::<Vec<_>>());
@@ -740,9 +742,13 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
             assert_eq!(var.idx, b.len());
             if let Some(constant) = var.constant {
                 matrix.append(var.idx, var.idx, 1.0);
-                b.push(constant);
+                b.push(constant / 10.0);
             } else {
                 b.push(0.0);
+
+                let c2 = (1_f32).powi(2);
+                let dt2 = (2_f32).powi(2);
+                let dx2 = (1_f32).powi(2);
 
                 for edge in Edge::ALL {
                     find_neighbors(tree, edge, &mut |neighbor| {
@@ -755,11 +761,14 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
                         );
 
                         let edge_is_time = matches!(edge, Edge::Top | Edge::Bottom);
-                        let sign = if edge_is_time { -1. } else { 1. };
+
+                        let sign = if edge_is_time { dx2 } else { -dt2 * c2 };
 
                         matrix.append(var.idx, neigh_var.idx, sign * interface_size);
                     });
                 }
+
+                matrix.append(var.idx, var.idx, 2.0 * (dt2 * c2 - dx2));
             }
         }
         NodeContent::Branch(branches) => {
