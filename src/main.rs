@@ -5,18 +5,20 @@ use eframe::egui::{
 };
 use rsparse::{data::Trpl, lusol};
 
+const RES: usize = 7;
 fn gen_tree(resolution: f32) -> NodeRef<f32> {
     let tree = new_root();
 
     let f = |x: f32| (1.0 - 4.0 * (x - 0.5).powi(2)).sqrt();
     let f = InputFunction::from_func(Rc::new(f));
-    insert_function_rec(tree.clone(), resolution, 20, f.clone());
+    insert_function_rec(tree.clone(), resolution, RES, f.clone());
     tree
 }
 
 fn main() {
     let mut resolution: f32 = -7.0;
     let mut tree = gen_tree(resolution.exp());
+    tree = make_uniform(&tree, RES);
 
     let mut sample_y = 1.0;
 
@@ -30,6 +32,7 @@ fn main() {
             let resp = ui.add(DragValue::new(&mut resolution).speed(1e-1));
             if resp.changed() {
                 tree = gen_tree(resolution.exp());
+                tree = make_uniform(&tree, RES);
             }
 
             if ui.button("SOLVE").clicked() {
@@ -569,22 +572,70 @@ fn draw_func_at_y(
     );
 }
 
+fn make_uniform(tree: &NodeRef<f32>, max_level: usize) -> NodeRef<f32> {
+    make_uniform_rec(tree, max_level, None)
+}
+
+fn make_uniform_rec(
+    tree: &NodeRef<f32>,
+    max_level: usize,
+    parent: Option<NodeRef<f32>>,
+) -> NodeRef<f32> {
+    let content = tree.borrow().content.clone();
+    let level = tree.borrow().level;
+    match content {
+        NodeContent::Leaf(value) => {
+            if level < max_level {
+                let branches = [(); 4].map(|_| {
+                    Rc::new(RefCell::new(Node {
+                        level: tree.borrow().level + 1,
+                        parent: Some(tree.clone()),
+                        content: NodeContent::Leaf(value),
+                    }))
+                });
+                tree.borrow_mut().content = NodeContent::Branch(branches);
+
+                make_uniform(tree, max_level)
+            } else {
+                Rc::new(RefCell::new(Node {
+                    level: tree.borrow().level,
+                    parent: parent.clone(),
+                    content: NodeContent::Leaf(value),
+                }))
+            }
+        }
+        NodeContent::Branch(branches) => {
+            let content = NodeContent::Branch(
+                branches.map(|branch| make_uniform_rec(&branch, max_level, parent.clone())),
+            );
+            Rc::new(RefCell::new(Node {
+                level: tree.borrow().level,
+                parent: parent.clone(),
+                content,
+            }))
+        }
+    }
+}
+
 fn solve(tree: &NodeRef<f32>) -> Result<(), rsparse::Error> {
     let idx_tree = build_sim_tree(tree);
     let (matrix, b) = build_matrix(&idx_tree);
     let matrix = matrix.to_sprs();
     let mut x = b.clone();
-    lusol(&matrix, &mut x, 1, 1e-6)?;
+    //lusol(&matrix, &mut x, 1, 1e-6)?;
 
-    let x_sprs = rsparse::data::Sprs::new_from_vec(&x.iter().copied().map(|x| vec![x]).collect::<Vec<_>>());
-    let pred_b = rsparse::multiply(&matrix, &x_sprs);
+    //let x_sprs =
+    //rsparse::data::Sprs::new_from_vec(&x.iter().copied().map(|x| vec![x]).collect::<Vec<_>>());
+    //let pred_b = rsparse::multiply(&matrix, &x_sprs);
 
-    let true_b = rsparse::data::Sprs::new_from_vec(&b.iter().copied().map(|b| vec![b]).collect::<Vec<_>>());
-    let diffs = true_b - pred_b;
+    //let true_b =
+    //rsparse::data::Sprs::new_from_vec(&b.iter().copied().map(|b| vec![b]).collect::<Vec<_>>());
+    //let diffs = true_b - pred_b;
 
-    let ret: Vec<f32> = diffs.to_dense().into_iter().flatten().collect();
+    //let ret: Vec<f32> = x_sprs.to_dense().into_iter().flatten().collect();
     //dbg!(ret.iter().sum::<f32>());
     //let ret = b;
+    let ret = x;
 
     scatter(tree, &ret);
 
@@ -634,7 +685,7 @@ fn build_sim_tree_rec(
                 .clone()
                 .map(|branch| build_sim_tree_rec(&branch, next_idx, Some(idx_tree.clone())));
             idx_tree.borrow_mut().content = NodeContent::Branch(idx_tree_branches);
-        },
+        }
         NodeContent::Leaf(value) => {
             let idx = *next_idx;
             *next_idx += 1;
@@ -653,13 +704,13 @@ fn build_sim_tree_rec(
 }
 
 fn is_boundary_cell<T: Copy>(node: &NodeRef<T>) -> bool {
-    let mut has_neighbor = false;
+    let mut is_bound = true;
 
     find_neighbors(&node, Edge::Bottom, &mut |_| {
-        has_neighbor = true;
+        is_bound = false;
     });
 
-    has_neighbor
+    is_bound
 }
 
 fn build_matrix(tree: &NodeRef<SimVariable>) -> (Trpl<f32>, Vec<f32>) {
@@ -673,34 +724,42 @@ fn build_matrix(tree: &NodeRef<SimVariable>) -> (Trpl<f32>, Vec<f32>) {
     (matrix, b)
 }
 
-fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut Vec<f32>)  {
+fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut Vec<f32>) {
     match &tree.borrow().content {
         NodeContent::Leaf(var) => {
             matrix.append(var.idx, var.idx, 4.0);
 
+            assert_eq!(var.idx, b.len());
             if let Some(constant) = var.constant {
                 b.push(constant);
             } else {
                 b.push(0.0);
-            }
 
+                /*
                 for edge in Edge::ALL {
                     find_neighbors(tree, edge, &mut |neighbor| {
-                        let NodeContent::Leaf(neigh_var) = neighbor.borrow().content else { unreachable!() };
-                        let interface_size = calculate_interface_factor(tree.borrow().level, neighbor.borrow().level);
+                        let NodeContent::Leaf(neigh_var) = neighbor.borrow().content else {
+                            unreachable!()
+                        };
+                        let interface_size = calculate_interface_factor(
+                            tree.borrow().level,
+                            neighbor.borrow().level,
+                        );
 
                         let edge_is_time = matches!(edge, Edge::Top | Edge::Bottom);
-                        let sign = if edge_is_time { 1. } else { -1. };
+                        let sign = -1.0; //if edge_is_time { 1. } else { -1. };
 
                         matrix.append(var.idx, neigh_var.idx, sign * interface_size);
                     });
                 }
-        },
+                */
+            }
+        }
         NodeContent::Branch(branches) => {
             for branch in branches {
                 build_matrix_rec(&branch, matrix, b);
             }
-        },
+        }
     }
 }
 
@@ -751,5 +810,5 @@ fn calculate_interface_factor(our_level: usize, neighbor_level: usize) -> f32 {
     // Get the actual size, in units, of the interface between us and our neighbor
     let interface_size = 2_f32.powf(relative_level);
 
-    interface_size 
+    interface_size
 }
