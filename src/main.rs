@@ -576,9 +576,15 @@ fn solve(tree: &NodeRef<f32>) -> Result<(), rsparse::Error> {
     let mut x = b.clone();
     lusol(&matrix, &mut x, 1, 1e-6)?;
 
-    let mut a2 = rsparse::data::Sprs::new_from_vec(&x.iter().copied().map(|x| vec![x]).collect::<Vec<_>>());
-    let residuals = rsparse::multiply(&matrix, &a2);
-    let ret: Vec<f32> = residuals.to_dense().into_iter().flatten().collect();
+    let x_sprs = rsparse::data::Sprs::new_from_vec(&x.iter().copied().map(|x| vec![x]).collect::<Vec<_>>());
+    let pred_b = rsparse::multiply(&matrix, &x_sprs);
+
+    let true_b = rsparse::data::Sprs::new_from_vec(&b.iter().copied().map(|b| vec![b]).collect::<Vec<_>>());
+    let diffs = true_b - pred_b;
+
+    let ret: Vec<f32> = diffs.to_dense().into_iter().flatten().collect();
+    //dbg!(ret.iter().sum::<f32>());
+    //let ret = b;
 
     scatter(tree, &ret);
 
@@ -676,18 +682,19 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
                 b.push(constant);
             } else {
                 b.push(0.0);
+            }
+
                 for edge in Edge::ALL {
                     find_neighbors(tree, edge, &mut |neighbor| {
                         let NodeContent::Leaf(neigh_var) = neighbor.borrow().content else { unreachable!() };
                         let interface_size = calculate_interface_factor(tree.borrow().level, neighbor.borrow().level);
 
-                        //let edge_is_time = matches!(edge, Edge::Top | Edge::Bottom);
-                        //let sign = if edge_is_time { 1. } else { -1. };
+                        let edge_is_time = matches!(edge, Edge::Top | Edge::Bottom);
+                        let sign = if edge_is_time { 1. } else { -1. };
 
-                        matrix.append(var.idx, neigh_var.idx, -interface_size);
+                        matrix.append(var.idx, neigh_var.idx, sign * interface_size);
                     });
                 }
-            }
         },
         NodeContent::Branch(branches) => {
             for branch in branches {
