@@ -10,7 +10,8 @@ fn gen_tree(resolution: f32) -> NodeRef<f32> {
     let tree = new_root();
 
     //let f = |x: f32| (1.0 - 4.0 * (x - 0.5).powi(2)).sqrt();
-    let f = |x: f32| ((x - 0.5).abs() < 0.1) as i32 as f32;
+    //let f = |x: f32| ((x - 0.5).abs() < 0.1) as i32 as f32;
+    let f = |x: f32| (x * std::f32::consts::TAU).sin();
     let f = InputFunction::from_func(Rc::new(f));
     insert_function_rec(tree.clone(), resolution, RES, f.clone());
     tree
@@ -18,8 +19,8 @@ fn gen_tree(resolution: f32) -> NodeRef<f32> {
 
 fn main() {
     let mut resolution: f32 = RES as f32 + 1.0;
-    let mut tree = gen_tree(2_f32.powf(-resolution));
-    //tree = make_uniform(&tree, RES - 2);
+    let mut tree = gen_tree(2_f32.powf(-2. * resolution));
+    tree = make_uniform(&tree, RES);
 
     let mut sample_y = 1.0;
 
@@ -32,7 +33,7 @@ fn main() {
             ui.label("Resolution: ");
             let resp = ui.add(DragValue::new(&mut resolution).speed(1e-1));
             if resp.changed() {
-                tree = gen_tree(2_f32.powf(-resolution));
+                tree = gen_tree(2_f32.powf(-2. * resolution));
                 tree = make_uniform(&tree, RES);
             }
 
@@ -633,7 +634,7 @@ fn solve(tree: &NodeRef<f32>) -> Result<(), rsparse::Error> {
     let (matrix, b) = build_matrix(&idx_tree);
     let matrix = matrix.to_sprs();
     let mut x = b.clone();
-    lusol(&matrix, &mut x, 1, 1e-9)?;
+    lusol(&matrix, &mut x, 1, 1e-6)?;
 
     //let x_sprs =
     //rsparse::data::Sprs::new_from_vec(&x.iter().copied().map(|x| vec![x]).collect::<Vec<_>>());
@@ -755,6 +756,12 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
                     has_top = true;
                 });
 
+                let mut has_bottom = false;
+                find_neighbors(tree, Edge::Bottom, &mut |_| {
+                    has_bottom = true;
+                });
+
+
                 for edge in Edge::ALL {
                     find_neighbors(tree, edge, &mut |neighbor| {
                         let NodeContent::Leaf(neigh_var) = neighbor.borrow().content else {
@@ -771,8 +778,11 @@ fn build_matrix_rec(tree: &NodeRef<SimVariable>, matrix: &mut Trpl<f32>, b: &mut
                         if edge == Edge::Bottom && !has_top {
                             sign *= 2.0;
                         }
+                        if edge == Edge::Top && !has_bottom {
+                            sign *= 2.0;
+                        }
 
-                        matrix.append(var.idx, neigh_var.idx, sign * interface_size);
+                        matrix.append(var.idx, neigh_var.idx, -sign * interface_size);
                     });
                 }
 
